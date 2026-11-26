@@ -1,0 +1,97 @@
+name: Release AntiPod (CLI + GUI)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Windows x64 (CLI + NSIS/MSI)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify Cargo.toml and tauri.conf.json match tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tagVer = "${{ github.ref_name }}".TrimStart('v')
+          $cargoToml = Get-Content "Cargo.toml" -Raw
+          $tauriConf = Get-Content "crates/antipod-gui/src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json
+          if ($cargoToml -notmatch "version\s*=\s*`"$tagVer`"") {
+            Write-Error "Версия в Cargo.toml не совпадает с тегом ${{ github.ref_name }}"
+            exit 1
+          }
+          if ($tauriConf.version -ne $tagVer) {
+            Write-Error "Версия в tauri.conf.json ($($tauriConf.version)) не совпадает с тегом ${{ github.ref_name }}"
+            exit 1
+          }
+
+      - name: Install GUI deps and generate Windows icons
+        working-directory: crates/antipod-gui
+        run: |
+          npm install
+          npx tauri icon ../../assets/icon.png
+
+      - name: Run Rust unit tests
+        run: cargo test -p antipod-core -p antipod-cli
+
+      - name: Build CLI release binary
+        run: cargo build -p antipod-cli --release
+
+      - name: Build Tauri v2 Windows installers (NSIS + MSI)
+        working-directory: crates/antipod-gui
+        run: npx tauri build --bundles nsis,msi
+
+      - name: Package artifacts and generate SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          $tag = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v1.0.0-dev" }
+          $outDir = "release-artifacts"
+          $cliStage = "dist-cli"
+          $cliZip = "$outDir\antipod-cli-$tag-windows-x64.zip"
+
+          New-Item -ItemType Directory -Force -Path $outDir, $cliStage | Out-Null
+
+          Copy-Item "target\release\antipod.exe" "$cliStage\"
+          Copy-Item "examples\profiles.example.toml" "$cliStage\"
+          Copy-Item "README.md" "$cliStage\"
+          if (Test-Path "LICENSE") { Copy-Item "LICENSE" "$cliStage\" }
+          if (Test-Path "NOTICE") { Copy-Item "NOTICE" "$cliStage\" }
+          Compress-Archive -Path "$cliStage\*" -DestinationPath $cliZip -Force
+
+          Get-ChildItem "target\release\bundle\nsis\*-setup.exe" | Copy-Item -Destination $outDir
+          Get-ChildItem "target\release\bundle\msi\*.msi" | Copy-Item -Destination $outDir
+
+          $hashes = Get-ChildItem $outDir -File | ForEach-Object {
+            $h = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
+            "$h  $($_.Name)"
+          }
+          $hashes | Out-File -FilePath "$outDir\SHA256SUMS.txt" -Encoding ascii
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "AntiPod ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: |
+            release-artifacts/*
