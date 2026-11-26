@@ -1,0 +1,30 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-and-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install frontend deps, generate icons and build UI
+        working-directory: crates/antipod-gui
+        run: |
+          npm install
+          npx tauri icon ../../assets/icon.png
+          npm run build
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets
+      - name: Run unit tests
+        run: cargo test -p antipod-core -p antipod-cli
