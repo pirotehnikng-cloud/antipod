@@ -1,0 +1,48 @@
+# Rust / Cargo
+/target/
+/dist/
+/dist-cli/
+/release-artifacts/
+**/*.rs.bk
+*.pdb
+*.zip
+SHA256SUMS.txt
+
+# Frontend / Tauri v2 (иконки и зависимости генерируются в CI)
+node_modules/
+crates/antipod-gui/dist/
+crates/antipod-gui/src-tauri/gen/
+crates/antipod-gui/src-tauri/icons/
+
+# Локальные конфиги и секреты
+profiles.toml
+config.toml
+settings.local.json
+.env
+.env.*
+*.token
+*.key
+*.pem
+*.sig
+
+# Изолированные профили и кэши Antigravity
+profiles/
+AntiPodProfiles/
+DevTest/
+user-data/
+_shared-extensions/
+.antigravity/
+.gemini/
+
+# Логи и временные файлы
+*.log
+*.pid
+*.lock
+
+# ОС и редакторы
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+.idea/
