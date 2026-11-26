@@ -1,0 +1,22 @@
+# Сохрани этот файл как: %APPDATA%\antipod\profiles.toml
+
+profiles_root = "C:\\AntiPodProfiles"
+# exe_path = "C:\\Users\\Username\\AppData\\Local\\Programs\\Antigravity IDE\\Antigravity IDE.exe"
+
+isolate_extensions = false
+share_dev_toolchains = true
+auto_git_worktree = true
+
+[[profiles]]
+name = "personal"
+mode = "ide"
+titlebar_color = "#1f4e3d"
+default_project = "D:\\Projects\\AppA"
+chrome_profile = "Profile 1"
+
+[[profiles]]
+name = "work"
+mode = "ide"
+titlebar_color = "#2b3a55"
+default_project = "D:\\Projects\\AppB"
+chrome_profile = "Profile 2"
