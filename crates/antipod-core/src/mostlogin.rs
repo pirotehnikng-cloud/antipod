@@ -53,15 +53,22 @@ pub fn open_mostlogin_profile(
         .get("pid")
         .and_then(Value::as_u64)
         .and_then(|v| u32::try_from(v).ok());
-    let port = node
-        .get("port")
-        .and_then(Value::as_u64)
-        .and_then(|v| u16::try_from(v).ok());
     let ws = node
         .get("ws")
         .or_else(|| node.get("cdpUrl"))
         .and_then(Value::as_str)
         .map(ToString::to_string);
+    let http_url = node
+        .get("http")
+        .or_else(|| node.get("httpUrl"))
+        .and_then(Value::as_str);
+
+    let port = node
+        .get("port")
+        .and_then(Value::as_u64)
+        .and_then(|v| u16::try_from(v).ok())
+        .or_else(|| http_url.and_then(extract_port_from_url))
+        .or_else(|| ws.as_deref().and_then(extract_port_from_url));
 
     Ok(MostLoginLaunchInfo { pid, port, ws })
 }
@@ -93,6 +100,71 @@ pub fn list_mostlogin_profiles(
     });
     let resp = http_post_json(api_url, api_token, "/api/profile/getProfiles", &payload)?;
     Ok(extract_profiles_from_json(&resp))
+}
+
+pub fn open_url_via_cdp(port: u16, url: &str) -> Result<(), CoreError> {
+    let clean_url = url.trim().replace(' ', "%20");
+    if clean_url.is_empty() || clean_url.contains('\r') || clean_url.contains('\n') {
+        return Err(CoreError::Config(
+            "Некорректный URL для открытия через CDP".to_string(),
+        ));
+    }
+
+    let code = send_cdp_new_tab("PUT", port, &clean_url)?;
+    if (200..300).contains(&code) {
+        return Ok(());
+    }
+    if code == 405 {
+        let fallback_code = send_cdp_new_tab("GET", port, &clean_url)?;
+        if (200..300).contains(&fallback_code) {
+            return Ok(());
+        }
+        return Err(CoreError::Process(format!(
+            "CDP /json/new вернул HTTP {fallback_code}"
+        )));
+    }
+    Err(CoreError::Process(format!(
+        "CDP /json/new вернул HTTP {code}"
+    )))
+}
+
+fn send_cdp_new_tab(method: &str, port: u16, clean_url: &str) -> Result<u16, CoreError> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2))
+        .map_err(|e| CoreError::Process(format!("CDP порт {port} недоступен: {e}")))?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+
+    let req = format!(
+        "{method} /json/new?{clean_url} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    stream
+        .write_all(req.as_bytes())
+        .map_err(|e| CoreError::Process(format!("Ошибка записи в CDP порт {port}: {e}")))?;
+
+    let mut buf = [0u8; 256];
+    let n = stream
+        .read(&mut buf)
+        .map_err(|e| CoreError::Process(format!("Ошибка чтения ответа CDP ({port}): {e}")))?;
+    let head = String::from_utf8_lossy(&buf[..n]);
+    let status = head
+        .split("\r\n")
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|c| c.parse::<u16>().ok())
+        .unwrap_or(0);
+    Ok(status)
+}
+
+fn extract_port_from_url(raw: &str) -> Option<u16> {
+    let rest = raw
+        .trim()
+        .split_once("://")
+        .map(|(_, r)| r)
+        .unwrap_or(raw.trim());
+    let authority = rest.split('/').next()?;
+    let (_, port_str) = authority.rsplit_once(':')?;
+    port_str.parse::<u16>().ok().filter(|&p| p > 0)
 }
 
 fn http_post_json(
@@ -194,7 +266,11 @@ fn connect_local(host: &str, port: u16) -> Result<TcpStream, CoreError> {
     let connect_timeout = Duration::from_secs(5);
     let addrs: Vec<SocketAddr> = (host, port)
         .to_socket_addrs()
-        .map_err(|e| CoreError::Config(format!("Некорректный адрес MostLogin API ({host}:{port}): {e}")))?
+        .map_err(|e| {
+            CoreError::Config(format!(
+                "Некорректный адрес MostLogin API ({host}:{port}): {e}"
+            ))
+        })?
         .collect();
 
     let mut last_err = None;
@@ -224,7 +300,8 @@ fn parse_api_base(input: &str) -> Result<(String, u16, String), CoreError> {
         r
     } else if trimmed.starts_with("https://") {
         return Err(CoreError::Config(
-            "MostLogin Local API работает по http:// (например, http://127.0.0.1:30898)".to_string(),
+            "MostLogin Local API работает по http:// (например, http://127.0.0.1:30898)"
+                .to_string(),
         ));
     } else {
         trimmed
@@ -283,7 +360,11 @@ fn decode_chunked(input: &[u8]) -> Option<Vec<u8>> {
 
 fn extract_error_message(val: &Value) -> Option<String> {
     for key in ["message", "msg", "error"] {
-        if let Some(s) = val.get(key).and_then(Value::as_str).filter(|s| !s.trim().is_empty()) {
+        if let Some(s) = val
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+        {
             return Some(s.to_string());
         }
     }
@@ -363,6 +444,16 @@ mod tests {
         let (h2, p2, _) = parse_api_base("127.0.0.1:31000").expect("short");
         assert_eq!(h2, "127.0.0.1");
         assert_eq!(p2, 31000);
+    }
+
+    #[test]
+    fn extracts_cdp_port_from_urls() {
+        assert_eq!(
+            extract_port_from_url("ws://127.0.0.1:9222/devtools/browser/abc"),
+            Some(9222)
+        );
+        assert_eq!(extract_port_from_url("http://127.0.0.1:41234"), Some(41234));
+        assert_eq!(extract_port_from_url("http://127.0.0.1"), None);
     }
 
     #[test]
