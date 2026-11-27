@@ -1,3 +1,8 @@
+---
+
+### 3. Обновлённый `README.ru.md` (русская версия)
+
+```markdown
 <div align="center">
 
 <img src="assets/banner.svg" alt="AntiPod Banner" width="100%" />
@@ -6,13 +11,15 @@
 
 **Нативный лаунчер и менеджер профилей на Rust + Tauri v2 для изолированного запуска нескольких аккаунтов Google Antigravity на Windows**
 
+🌐 **Язык:** **Русский** | [English](README.md)
 
-[![Downloads](https://img.shields.io/github/downloads/pirotehnikng-cloud/antipod/total?label=Downloads&color=0078d4&logo=windows)](../../releases/latest)
 [![Release](https://img.shields.io/github/v/release/pirotehnikng-cloud/antipod?color=2e8540&label=Release)](https://github.com/pirotehnikng-cloud/antipod/releases)
+[![Downloads](https://img.shields.io/github/downloads/pirotehnikng-cloud/antipod/total?color=2e8540&label=%D0%A1%D0%BA%D0%B0%D1%87%D0%B8%D0%B2%D0%B0%D0%BD%D0%B8%D0%B9)](https://github.com/pirotehnikng-cloud/antipod/releases)
+[![Windows Build](https://img.shields.io/github/actions/workflow/status/pirotehnikng-cloud/antipod/release.yml?label=Windows%20Build)](https://github.com/pirotehnikng-cloud/antipod/actions)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11%20(x64)-0078D6?logo=windows)](https://github.com/pirotehnikng-cloud/antipod/releases)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-🌐 **Язык / Language:** **Русский** | [English](README.md)
-[Скачать релиз для Windows](https://github.com/pirotehnikng-cloud/antipod/releases/latest) · [Возможности релиза](#-возможности-релиза-v131) · [Быстрый старт](#-быстрый-старт) · [CLI-утилита](#-консольная-утилита-antipod-cli)
+
+[Скачать релиз для Windows](https://github.com/pirotehnikng-cloud/antipod/releases/latest) · [Возможности релиза](#-возможности-релиза-v133) · [Быстрый старт](#-быстрый-старт) · [CLI-утилита](#-консольная-утилита-antipod-cli)
 
 </div>
 
@@ -32,7 +39,7 @@
 
 ---
 
-## ✨ Возможности релиза `v1.3.1`
+## ✨ Возможности релиза `v1.3.3`
 
 Нажми на нужный раздел ниже, чтобы раскрыть подробное описание и настройки:
 
@@ -92,11 +99,12 @@
 </details>
 
 <details>
-<summary><b>5. Портативный режим, системный трей и автозапуск</b></summary>
+<summary><b>5. Портативный режим, системный трей, автозапуск и окно «О программе»</b></summary>
 <br>
 
 - **Portable-режим:** создайте пустой файл `portable.flag` (или положите готовый `profiles.toml`) рядом с `AntiPod.exe` — все профили, настройки и `state.json` будут храниться локально в папке с программой, без записи в `%APPDATA%`.
 - **Работа в системном трее:** закрытие окна сворачивает AntiPod в трей Windows, где доступны быстрый запуск/остановка отдельных профилей с отображением их ОЗУ, остановка всех инстансов сразу и переключение автозапуска с Windows (`--minimized`).
+- **Окно «О программе» (`ⓘ`) и адаптивный интерфейс:** обновлённая вёрстка карточек для длинных email-адресов и кнопка `ⓘ` в шапке с версией, лицензией и ссылкой на репозиторий.
 
 </details>
 
@@ -104,7 +112,7 @@
 
 ## 🚀 Быстрый старт
 
-1. Скачайте свежий архив **`AntiPod-v1.3.1-windows-x64-portable.zip`** со страницы [Releases](https://github.com/pirotehnikng-cloud/antipod/releases/latest) и распакуйте в удобную папку (например, `C:\AntiPod`).
+1. Скачайте свежий архив **`AntiPod-v1.3.3-windows-x64-portable.zip`** со страницы [Releases](https://github.com/pirotehnikng-cloud/antipod/releases/latest) и распакуйте в удобную папку (например, `C:\AntiPod`).
 2. *(Опционально)* Для портативного режима убедитесь, что рядом с `AntiPod.exe` лежит файл `portable.flag`.
 3. Запустите `AntiPod.exe`.
 4. *(Для пользователей MostLogin)* В блоке **MostLogin Local API** укажите адрес `http://127.0.0.1:30898`, вставьте ваш API-токен (например, `Bearer <ваш_токен>`) и нажмите **Загрузить профили**.
