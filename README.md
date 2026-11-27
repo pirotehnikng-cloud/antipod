@@ -1,6 +1,4 @@
-### 3. Обновлённый `README.ru.md` (русская версия)
-
-```markdown
+markdown
 <div align="center">
 
 <img src="assets/banner.svg" alt="AntiPod Banner" width="100%" />
