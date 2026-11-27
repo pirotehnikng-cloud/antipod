@@ -50,6 +50,8 @@ pub struct AppConfig {
     pub share_dev_toolchains: bool,
     #[serde(default = "default_true")]
     pub auto_git_worktree: bool,
+    #[serde(default = "default_true")]
+    pub intercept_oauth: bool,
     #[serde(default = "default_mostlogin_api_url")]
     pub mostlogin_api_url: String,
     #[serde(default)]
@@ -66,6 +68,7 @@ impl Default for AppConfig {
             isolate_extensions: false,
             share_dev_toolchains: true,
             auto_git_worktree: true,
+            intercept_oauth: true,
             mostlogin_api_url: default_mostlogin_api_url(),
             mostlogin_api_token: None,
             profiles: vec![
@@ -183,6 +186,13 @@ pub fn save_mostlogin_settings(
     Ok(cfg)
 }
 
+pub fn save_intercept_oauth(enabled: bool) -> Result<AppConfig, CoreError> {
+    let mut cfg = load_config()?;
+    cfg.intercept_oauth = enabled;
+    save_config(&cfg)?;
+    Ok(cfg)
+}
+
 pub fn upsert_profile(profile: ProfileConfig) -> Result<AppConfig, CoreError> {
     let mut cfg = load_config()?;
     if let Some(existing) = cfg.profiles.iter_mut().find(|p| p.name == profile.name) {
@@ -205,6 +215,10 @@ pub fn remove_profile(name: &str) -> Result<AppConfig, CoreError> {
 pub struct RuntimeState {
     pub pids: HashMap<String, u32>,
     pub active_repos: HashMap<String, PathBuf>,
+    #[serde(default)]
+    pub last_launched_profile: Option<String>,
+    #[serde(default)]
+    pub mostlogin_cdp_ports: HashMap<String, u16>,
 }
 
 pub fn load_state() -> RuntimeState {
@@ -225,6 +239,19 @@ pub fn save_state(state: &RuntimeState) -> Result<(), CoreError> {
     let serialized = serde_json::to_string_pretty(state)?;
     fs::write(path, serialized)?;
     Ok(())
+}
+
+pub fn set_mostlogin_cdp_port(profile_name: &str, port: Option<u16>) {
+    let mut state = load_state();
+    match port {
+        Some(p) if p > 0 => {
+            state.mostlogin_cdp_ports.insert(profile_name.to_string(), p);
+        }
+        _ => {
+            state.mostlogin_cdp_ports.remove(profile_name);
+        }
+    }
+    let _ = save_state(&state);
 }
 
 #[cfg(test)]
