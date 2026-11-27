@@ -5,6 +5,7 @@ pub mod isolation;
 pub mod job;
 pub mod launcher;
 pub mod metrics;
+pub mod mostlogin;
 pub mod proxy;
 pub mod theme;
 pub mod worktree;
@@ -16,14 +17,18 @@ pub use browser::{
     resolve_browser_exe, resolve_chrome_exe,
 };
 pub use config::{
-    app_data_dir, config_path, load_config, remove_profile, save_config, upsert_profile, AppConfig,
-    LaunchMode, ProfileConfig,
+    app_data_dir, config_path, load_config, remove_profile, save_config, save_mostlogin_settings,
+    upsert_profile, AppConfig, LaunchMode, ProfileConfig,
 };
 pub use launcher::{
     launch_by_name, launch_by_name_with_proxy, launch_detached, launch_detached_with_proxy,
     stop_detached_by_name, unregister_runtime_state, RunningInstance,
 };
 pub use metrics::{measure_many, ProcessMetrics};
+pub use mostlogin::{
+    close_mostlogin_profile, list_mostlogin_profiles, open_mostlogin_profile, MostLoginLaunchInfo,
+    MostLoginProfileInfo, DEFAULT_MOSTLOGIN_API_URL,
+};
 pub use proxy::{mask_proxy_str, test_proxy, ProxyBridge, ProxyConfig, ProxyScheme, ProxyTestResult};
 
 #[derive(Debug, Error)]
