@@ -1,6 +1,6 @@
 <div align="center">
 
-# AntiPod
+<img src="assets/banner.svg" alt="AntiPod Banner" width="100%" />
 
 **Native Rust + Tauri v2 launcher and profile manager for running multiple isolated Google Antigravity instances on Windows**
 
