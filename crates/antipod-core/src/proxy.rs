@@ -3,7 +3,9 @@ use std::net::{Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, TcpListener, TcpStream,
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
 
@@ -20,6 +22,26 @@ pub struct ProxyConfig {
     pub port: u16,
     pub username: Option<String>,
     pub password: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProxyTestResult {
+    pub ip: String,
+    pub country: String,
+    pub country_code: String,
+    pub city: String,
+    pub latency_ms: u64,
+}
+
+#[derive(Deserialize)]
+struct IpApiResponse {
+    status: Option<String>,
+    message: Option<String>,
+    query: Option<String>,
+    country: Option<String>,
+    #[serde(rename = "countryCode")]
+    country_code: Option<String>,
+    city: Option<String>,
 }
 
 impl ProxyConfig {
@@ -128,6 +150,111 @@ pub fn mask_proxy_str(raw: Option<&str>) -> Option<String> {
     match ProxyConfig::parse(s) {
         Ok(cfg) => Some(cfg.masked_display()),
         Err(_) => Some("ошибка формата прокси".to_string()),
+    }
+}
+
+pub fn test_proxy(upstream: &ProxyConfig) -> Result<ProxyTestResult, CoreError> {
+    const CHECK_HOST: &str = "ip-api.com";
+    const CHECK_PATH: &str = "/json/?fields=status,message,country,countryCode,city,query";
+
+    let started = Instant::now();
+    let mut stream = match upstream.scheme {
+        ProxyScheme::Http => {
+            let mut s = connect_upstream_timeout(upstream, Duration::from_secs(10)).map_err(|e| {
+                CoreError::Isolation(format!("Не удалось подключиться к HTTP-прокси: {e}"))
+            })?;
+            let mut req = format!(
+                "GET http://{CHECK_HOST}{CHECK_PATH} HTTP/1.1\r\nHost: {CHECK_HOST}\r\nUser-Agent: AntiPod/1.2\r\nAccept: application/json\r\nConnection: close\r\nProxy-Connection: close\r\n"
+            );
+            if let Some(auth) = upstream.basic_auth_header() {
+                req.push_str(&format!("Proxy-Authorization: {auth}\r\n"));
+            }
+            req.push_str("\r\n");
+            s.write_all(req.as_bytes()).map_err(|e| {
+                CoreError::Isolation(format!("Не удалось отправить запрос через прокси: {e}"))
+            })?;
+            s
+        }
+        ProxyScheme::Socks5 => {
+            let mut s = connect_socks5(upstream, CHECK_HOST, 80)
+                .map_err(|e| CoreError::Isolation(format!("Ошибка SOCKS5-прокси: {e}")))?;
+            let req = format!(
+                "GET {CHECK_PATH} HTTP/1.1\r\nHost: {CHECK_HOST}\r\nUser-Agent: AntiPod/1.2\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+            );
+            s.write_all(req.as_bytes()).map_err(|e| {
+                CoreError::Isolation(format!("Не удалось отправить запрос через SOCKS5: {e}"))
+            })?;
+            s
+        }
+    };
+
+    let mut raw_resp = Vec::new();
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+    stream
+        .take(64 * 1024)
+        .read_to_end(&mut raw_resp)
+        .map_err(|e| CoreError::Isolation(format!("Нет ответа от прокси (таймаут или разрыв): {e}")))?;
+
+    let latency_ms = started.elapsed().as_millis() as u64;
+    let resp_str = String::from_utf8_lossy(&raw_resp);
+    let (headers, body) = resp_str.split_once("\r\n\r\n").ok_or_else(|| {
+        CoreError::Isolation("Прокси вернул некорректный HTTP-ответ".to_string())
+    })?;
+
+    let status_code = headers
+        .split("\r\n")
+        .next()
+        .and_then(|l| l.split_whitespace().nth(1))
+        .unwrap_or("000");
+
+    match status_code {
+        "200" => {}
+        "407" => {
+            return Err(CoreError::Isolation(
+                "HTTP 407: прокси отклонил логин или пароль".to_string(),
+            ));
+        }
+        "403" => {
+            return Err(CoreError::Isolation(
+                "HTTP 403: доступ через прокси запрещён".to_string(),
+            ));
+        }
+        other => {
+            return Err(CoreError::Isolation(format!(
+                "Прокси вернул ошибку HTTP {other}"
+            )));
+        }
+    }
+
+    let json_slice = extract_json_object(body).ok_or_else(|| {
+        CoreError::Isolation("Сервер проверки IP вернул неожиданный ответ".to_string())
+    })?;
+    let parsed: IpApiResponse = serde_json::from_str(json_slice)
+        .map_err(|e| CoreError::Isolation(format!("Ошибка разбора ответа проверки IP: {e}")))?;
+
+    if parsed.status.as_deref() == Some("fail") {
+        return Err(CoreError::Isolation(format!(
+            "Проверка IP не удалась: {}",
+            parsed.message.unwrap_or_else(|| "неизвестная ошибка".to_string())
+        )));
+    }
+
+    Ok(ProxyTestResult {
+        ip: parsed.query.unwrap_or_else(|| "неизвестно".to_string()),
+        country: parsed.country.unwrap_or_else(|| "неизвестно".to_string()),
+        country_code: parsed.country_code.unwrap_or_else(|| "??".to_string()),
+        city: parsed.city.unwrap_or_default(),
+        latency_ms,
+    })
+}
+
+fn extract_json_object(body: &str) -> Option<&str> {
+    let start = body.find('{')?;
+    let end = body.rfind('}')?;
+    if end >= start {
+        Some(&body[start..=end])
+    } else {
+        None
     }
 }
 
@@ -371,7 +498,10 @@ fn is_hop_by_hop_or_proxy_header(line: &str) -> bool {
 }
 
 fn connect_upstream(upstream: &ProxyConfig) -> io::Result<TcpStream> {
-    let timeout = Duration::from_secs(15);
+    connect_upstream_timeout(upstream, Duration::from_secs(15))
+}
+
+fn connect_upstream_timeout(upstream: &ProxyConfig, timeout: Duration) -> io::Result<TcpStream> {
     let addrs: Vec<SocketAddr> = (upstream.host.as_str(), upstream.port)
         .to_socket_addrs()?
         .collect();
@@ -399,9 +529,8 @@ fn connect_socks5(
     target_host: &str,
     target_port: u16,
 ) -> io::Result<TcpStream> {
-    let mut stream = connect_upstream(upstream)?;
+    let mut stream = connect_upstream_timeout(upstream, Duration::from_secs(10))?;
 
-    // 1. Приветствие SOCKS5 (RFC 1928)
     if upstream.has_auth() {
         stream.write_all(&[0x05, 0x02, 0x00, 0x02])?;
     } else {
@@ -417,7 +546,6 @@ fn connect_socks5(
         ));
     }
 
-    // 2. Авторизация логин/пароль (RFC 1929)
     match method_resp[1] {
         0x00 => {}
         0x02 => {
@@ -460,7 +588,6 @@ fn connect_socks5(
         }
     }
 
-    // 3. Команда CONNECT (удалённое разрешение домена для защиты от утечек DNS)
     let mut req = Vec::with_capacity(64);
     req.extend_from_slice(&[0x05, 0x01, 0x00]);
 
@@ -486,7 +613,6 @@ fn connect_socks5(
     req.extend_from_slice(&target_port.to_be_bytes());
     stream.write_all(&req)?;
 
-    // 4. Чтение ответа SOCKS5
     let mut hdr = [0u8; 4];
     stream.read_exact(&mut hdr)?;
     if hdr[0] != 0x05 || hdr[1] != 0x00 {
@@ -728,6 +854,15 @@ mod tests {
         assert_eq!(p3.port, 3128);
         assert_eq!(p3.username.as_deref(), Some("user1"));
         assert_eq!(p3.password.as_deref(), Some("pass:2"));
+    }
+
+    #[test]
+    fn extracts_chunked_json_body() {
+        let raw = "1c\r\n{\"status\":\"success\",\"ip\":1}\r\n0\r\n\r\n";
+        assert_eq!(
+            extract_json_object(raw),
+            Some("{\"status\":\"success\",\"ip\":1}")
+        );
     }
 
     #[test]
