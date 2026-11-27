@@ -2,16 +2,19 @@
 
 <img src="assets/banner.svg" alt="AntiPod Banner" width="100%" />
 
+# AntiPod
+
 **Native Rust + Tauri v2 launcher and profile manager for running multiple isolated Google Antigravity instances on Windows**
 
 🌐 **Language:** **English** | [Русский](README.ru.md)
 
 [![Release](https://img.shields.io/github/v/release/pirotehnikng-cloud/antipod?color=2e8540&label=Release)](https://github.com/pirotehnikng-cloud/antipod/releases)
+[![Downloads](https://img.shields.io/github/downloads/pirotehnikng-cloud/antipod/total?color=2e8540&label=Downloads)](https://github.com/pirotehnikng-cloud/antipod/releases)
 [![Windows Build](https://img.shields.io/github/actions/workflow/status/pirotehnikng-cloud/antipod/release.yml?label=Windows%20Build)](https://github.com/pirotehnikng-cloud/antipod/actions)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11%20(x64)-0078D6?logo=windows)](https://github.com/pirotehnikng-cloud/antipod/releases)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-[Download Windows Release](https://github.com/pirotehnikng-cloud/antipod/releases/latest) · [Release Features](#-release-features-v131) · [Quick Start](#-quick-start) · [CLI Tool](#-command-line-interface-antipod-cli)
+[Download Windows Release](https://github.com/pirotehnikng-cloud/antipod/releases/latest) · [Release Features](#-release-features-v133) · [Quick Start](#-quick-start) · [CLI Tool](#-command-line-interface-antipod-cli)
 
 </div>
 
@@ -31,7 +34,7 @@
 
 ---
 
-## ✨ Release Features (`v1.3.1`)
+## ✨ Release Features (`v1.3.3`)
 
 Click any section below to expand full details and configuration options:
 
@@ -91,11 +94,12 @@ Click any section below to expand full details and configuration options:
 </details>
 
 <details>
-<summary><b>5. Portable Mode, System Tray & Autostart</b></summary>
+<summary><b>5. Portable Mode, System Tray, Autostart & About Dialog</b></summary>
 <br>
 
 - **True Portable Mode:** Place an empty `portable.flag` file (or an existing `profiles.toml`) next to `AntiPod.exe` to store all profiles, settings, and `state.json` locally in the application folder without touching `%APPDATA%`.
 - **System Tray Integration:** Closing the main window minimizes AntiPod to the Windows system tray, allowing one-click profile launch/stop with live RAM usage, stopping all instances at once, and toggling Windows startup (`--minimized`).
+- **About (`ⓘ`) & Responsive UI:** Clean dark interface with responsive profile cards and a quick `ⓘ` button in the header displaying current version, license, and GitHub repository link.
 
 </details>
 
@@ -103,7 +107,7 @@ Click any section below to expand full details and configuration options:
 
 ## 🚀 Quick Start
 
-1. Download the latest **`AntiPod-v1.3.1-windows-x64-portable.zip`** from [Releases](https://github.com/pirotehnikng-cloud/antipod/releases/latest) and extract it to a folder (e.g. `C:\AntiPod`).
+1. Download the latest **`AntiPod-v1.3.3-windows-x64-portable.zip`** from [Releases](https://github.com/pirotehnikng-cloud/antipod/releases/latest) and extract it to a folder (e.g. `C:\AntiPod`).
 2. *(Optional)* Keep `portable.flag` next to `AntiPod.exe` to run in portable mode.
 3. Launch `AntiPod.exe`.
 4. *(For MostLogin users)* In the **MostLogin Local API** panel, enter `http://127.0.0.1:30898`, paste your API token (e.g. `Bearer <your_token>`), and click **Load Profiles**.
