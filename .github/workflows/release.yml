@@ -85,16 +85,19 @@ jobs:
         working-directory: crates/antipod-gui
         run: npx tauri build --bundles nsis,msi
 
-      - name: Package artifacts and generate SHA256SUMS.txt
+      - name: Package artifacts (CLI + Portable GUI + Installers) and SHA256SUMS.txt
         shell: pwsh
         run: |
           $tag = "${{ needs.check-version.outputs.tag }}"
           $outDir = "release-artifacts"
           $cliStage = "dist-cli"
+          $guiStage = "dist-gui"
           $cliZip = "$outDir\antipod-cli-$tag-windows-x64.zip"
+          $guiZip = "$outDir\AntiPod-$tag-windows-x64-portable.zip"
 
-          New-Item -ItemType Directory -Force -Path $outDir, $cliStage | Out-Null
+          New-Item -ItemType Directory -Force -Path $outDir, $cliStage, $guiStage | Out-Null
 
+          # 1. Портативный архив CLI (консольная версия)
           Copy-Item "target\release\antipod.exe" "$cliStage\"
           Copy-Item "examples\profiles.example.toml" "$cliStage\"
           Copy-Item "README.md" "$cliStage\"
@@ -102,9 +105,27 @@ jobs:
           if (Test-Path "NOTICE") { Copy-Item "NOTICE" "$cliStage\" }
           Compress-Archive -Path "$cliStage\*" -DestinationPath $cliZip -Force
 
+          # 2. Портативный архив GUI (версия с окном без установки)
+          $guiExe = if (Test-Path "target\release\antipod-gui.exe") {
+            "target\release\antipod-gui.exe"
+          } elseif (Test-Path "target\release\AntiPod.exe") {
+            "target\release\AntiPod.exe"
+          } else {
+            Write-Error "Не найден собранный бинарник GUI в target\release\"
+            exit 1
+          }
+          Copy-Item $guiExe "$guiStage\AntiPod.exe"
+          Copy-Item "examples\profiles.example.toml" "$guiStage\"
+          Copy-Item "README.md" "$guiStage\"
+          if (Test-Path "LICENSE") { Copy-Item "LICENSE" "$guiStage\" }
+          if (Test-Path "NOTICE") { Copy-Item "NOTICE" "$guiStage\" }
+          Compress-Archive -Path "$guiStage\*" -DestinationPath $guiZip -Force
+
+          # 3. Установщики GUI (NSIS и MSI)
           Get-ChildItem "target\release\bundle\nsis\*-setup.exe" | Copy-Item -Destination $outDir
           Get-ChildItem "target\release\bundle\msi\*.msi" | Copy-Item -Destination $outDir
 
+          # 4. Единый SHA256SUMS.txt для всех файлов релиза
           $hashes = Get-ChildItem $outDir -File | ForEach-Object {
             $h = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
             "$h  $($_.Name)"
