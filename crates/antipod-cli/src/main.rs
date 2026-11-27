@@ -6,9 +6,9 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use antipod_core::{
-    config_path, launch_detached_with_proxy, load_config, mask_proxy_str, measure_many,
-    open_browser_for_profile, save_config, stop_detached_by_name, test_proxy, AppConfig,
-    ProxyBridge, ProxyConfig,
+    config_path, launch_detached_with_proxy, list_mostlogin_profiles, load_config, mask_proxy_str,
+    measure_many, open_browser_for_profile, open_mostlogin_profile, save_config,
+    stop_detached_by_name, test_proxy, AppConfig, ProxyBridge, ProxyConfig,
 };
 
 #[derive(Parser)]
@@ -37,13 +37,15 @@ enum Commands {
         #[arg(short, long)]
         project: Option<PathBuf>,
     },
-    /// Открыть привязанный браузер (антидетект, Chrome, Edge, Firefox) для OAuth
+    /// Открыть привязанный браузер (MostLogin API, антидетект, Chrome, Edge, Firefox)
     #[command(visible_alias = "browser")]
     Chrome {
         name: String,
         #[arg(short, long)]
         url: Option<String>,
     },
+    /// Показать список профилей из MostLogin Local API
+    MostloginList,
     /// Проверить прокси по имени профиля или по адресу (http://... / socks5://...)
     TestProxy { target: String },
     /// Остановить дерево процессов запущенного профиля
@@ -97,21 +99,31 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             println!(
-                "{:<14} {:<5} {:<9} {:<16} {:<26} {}",
+                "{:<14} {:<5} {:<9} {:<18} {:<26} {}",
                 "ПРОФИЛЬ", "РЕЖИМ", "ЦВЕТ", "БРАУЗЕР", "ПРОКСИ", "ПРОЕКТ"
             );
             for p in cfg.profiles {
-                let browser_col = p
-                    .browser_path
+                let browser_col = if let Some(ml_id) = p
+                    .mostlogin_profile_id
                     .as_deref()
-                    .and_then(|bp| bp.file_name())
-                    .and_then(|n| n.to_str())
-                    .or(p.chrome_profile.as_deref())
-                    .unwrap_or("auto");
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                {
+                    let short: String = ml_id.chars().take(10).collect();
+                    format!("ML:{short}")
+                } else {
+                    p.browser_path
+                        .as_deref()
+                        .and_then(|bp| bp.file_name())
+                        .and_then(|n| n.to_str())
+                        .or(p.chrome_profile.as_deref())
+                        .unwrap_or("auto")
+                        .to_string()
+                };
                 let proxy_col =
                     mask_proxy_str(p.proxy.as_deref()).unwrap_or_else(|| "-".to_string());
                 println!(
-                    "{:<14} {:<5} {:<9} {:<16} {:<26} {}",
+                    "{:<14} {:<5} {:<9} {:<18} {:<26} {}",
                     p.name,
                     format!("{:?}", p.mode).to_lowercase(),
                     p.titlebar_color,
@@ -154,6 +166,25 @@ fn main() -> Result<()> {
                 .find(|p| p.name == name)
                 .ok_or_else(|| anyhow::anyhow!("Профиль '{name}' не найден"))?;
 
+            if let Some(ml_id) = profile
+                .mostlogin_profile_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                let info = open_mostlogin_profile(
+                    Some(&cfg.mostlogin_api_url),
+                    cfg.mostlogin_api_token.as_deref(),
+                    ml_id,
+                    url.as_deref(),
+                )?;
+                println!(
+                    "[MOSTLOGIN] Открыт профиль '{}' (ID: {}, PID: {:?}, Port: {:?})",
+                    name, ml_id, info.pid, info.port
+                );
+                return Ok(());
+            }
+
             let bridge = start_proxy_bridge(profile.proxy.as_deref())?;
             let local_proxy = bridge.as_ref().map(ProxyBridge::local_url);
             let chrome_data = cfg.profiles_root.join(&profile.name).join("chrome-data");
@@ -176,6 +207,21 @@ fn main() -> Result<()> {
                     "Прокси-мост активен. Закрой окно браузера или нажми Ctrl+C для завершения."
                 );
                 wait_until_exit(pid);
+            }
+        }
+        Commands::MostloginList => {
+            let cfg = load_config()?;
+            let profiles = list_mostlogin_profiles(
+                Some(&cfg.mostlogin_api_url),
+                cfg.mostlogin_api_token.as_deref(),
+            )?;
+            if profiles.is_empty() {
+                println!("MostLogin вернул пустой список профилей.");
+                return Ok(());
+            }
+            println!("{:<36} {}", "PROFILE ID", "ИМЯ");
+            for p in profiles {
+                println!("{:<36} {}", p.id, p.name);
             }
         }
         Commands::TestProxy { target } => {
