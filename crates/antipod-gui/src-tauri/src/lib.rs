@@ -37,8 +37,15 @@ struct ProfileStatus {
     default_project: String,
     chrome_profile: Option<String>,
     browser_path: Option<String>,
+    mostlogin_profile_id: Option<String>,
     proxy: Option<String>,
     proxy_display: Option<String>,
+}
+
+#[derive(Serialize)]
+struct MostLoginSettings {
+    api_url: String,
+    api_token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -50,6 +57,7 @@ struct SaveProfileInput {
     default_project: String,
     chrome_profile: Option<String>,
     browser_path: Option<String>,
+    mostlogin_profile_id: Option<String>,
     proxy: Option<String>,
 }
 
@@ -279,6 +287,7 @@ fn list_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileStatus>, Strin
                 default_project: p.default_project.to_string_lossy().to_string(),
                 chrome_profile: p.chrome_profile,
                 browser_path: p.browser_path.map(|bp| bp.to_string_lossy().to_string()),
+                mostlogin_profile_id: p.mostlogin_profile_id,
                 proxy: p.proxy,
                 proxy_display,
             }
@@ -322,13 +331,38 @@ fn stop_profile(name: String, app: AppHandle, state: State<'_, AppState>) -> Res
 }
 
 #[tauri::command]
-fn open_chrome_oauth(name: String, state: State<'_, AppState>) -> Result<u32, String> {
+async fn open_chrome_oauth(name: String, state: State<'_, AppState>) -> Result<u32, String> {
     let cfg = antipod_core::load_config().map_err(|e| e.to_string())?;
     let profile = cfg
         .profiles
         .iter()
         .find(|p| p.name == name)
+        .cloned()
         .ok_or_else(|| format!("Профиль '{name}' не найден"))?;
+
+    if let Some(ml_id) = profile
+        .mostlogin_profile_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+    {
+        let api_url = cfg.mostlogin_api_url;
+        let api_token = cfg.mostlogin_api_token;
+        let info = tauri::async_runtime::spawn_blocking(move || {
+            antipod_core::open_mostlogin_profile(
+                Some(&api_url),
+                api_token.as_deref(),
+                &ml_id,
+                None,
+            )
+        })
+        .await
+        .map_err(|e| format!("Ошибка потока MostLogin API: {e}"))?
+        .map_err(|e| e.to_string())?;
+        return Ok(info.pid.unwrap_or(0));
+    }
+
     let local_proxy = ensure_proxy_url(&state, &profile.name, profile.proxy.as_deref())?;
     let chrome_data = cfg.profiles_root.join(&profile.name).join("chrome-data");
     let isolated_dir = local_proxy.as_ref().map(|_| chrome_data.as_path());
@@ -340,6 +374,65 @@ fn open_chrome_oauth(name: String, state: State<'_, AppState>) -> Result<u32, St
         local_proxy.as_deref(),
         isolated_dir,
     )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn close_mostlogin_window(name: String) -> Result<(), String> {
+    let cfg = antipod_core::load_config().map_err(|e| e.to_string())?;
+    let ml_id = cfg
+        .profiles
+        .iter()
+        .find(|p| p.name == name)
+        .and_then(|p| p.mostlogin_profile_id.as_deref())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| format!("У профиля '{name}' не указан MostLogin profileId"))?;
+
+    let api_url = cfg.mostlogin_api_url;
+    let api_token = cfg.mostlogin_api_token;
+    tauri::async_runtime::spawn_blocking(move || {
+        antipod_core::close_mostlogin_profile(Some(&api_url), api_token.as_deref(), &ml_id)
+    })
+    .await
+    .map_err(|e| format!("Ошибка потока MostLogin API: {e}"))?
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_mostlogin_settings() -> Result<MostLoginSettings, String> {
+    let cfg = antipod_core::load_config().map_err(|e| e.to_string())?;
+    Ok(MostLoginSettings {
+        api_url: cfg.mostlogin_api_url,
+        api_token: cfg.mostlogin_api_token,
+    })
+}
+
+#[tauri::command]
+fn save_mostlogin_config(api_url: String, api_token: Option<String>) -> Result<(), String> {
+    antipod_core::save_mostlogin_settings(api_url, api_token).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn fetch_mostlogin_profiles(
+    api_url: String,
+    api_token: Option<String>,
+) -> Result<Vec<antipod_core::MostLoginProfileInfo>, String> {
+    let url = api_url.trim().to_string();
+    let token = api_token
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    tauri::async_runtime::spawn_blocking(move || {
+        antipod_core::list_mostlogin_profiles(
+            (!url.is_empty()).then_some(url.as_str()),
+            token.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| format!("Ошибка потока MostLogin API: {e}"))?
     .map_err(|e| e.to_string())
 }
 
@@ -381,6 +474,11 @@ fn save_profile(
         .filter(|s| !s.is_empty())
         .map(PathBuf::from);
 
+    let normalized_ml_id = input
+        .mostlogin_profile_id
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
     antipod_core::upsert_profile(ProfileConfig {
         name: trimmed.to_string(),
         mode: input.mode,
@@ -388,6 +486,7 @@ fn save_profile(
         default_project: PathBuf::from(input.default_project),
         chrome_profile: input.chrome_profile,
         browser_path: normalized_browser,
+        mostlogin_profile_id: normalized_ml_id,
         proxy: normalized_proxy.clone(),
     })
     .map_err(|e| e.to_string())?;
@@ -531,6 +630,10 @@ pub fn run() {
             launch_profile,
             stop_profile,
             open_chrome_oauth,
+            close_mostlogin_window,
+            get_mostlogin_settings,
+            save_mostlogin_config,
+            fetch_mostlogin_profiles,
             test_proxy_connection,
             save_profile,
             delete_profile,
