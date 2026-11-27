@@ -1,4 +1,16 @@
-:root {
+.btn-info {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  transition: all 0.15s ease;
+}
+
+.btn-info:hover:not(:disabled) {
+  background: #253042;
+  border-color: #3c4b64;
+  color: var(--text);
+  transform: scale(1.05);
+}:root {
   color-scheme: dark;
   --bg: #0f131a;
   --panel: #161c26;
