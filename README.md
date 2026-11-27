@@ -1,10 +1,12 @@
 <div align="center">
 
+<img src="crates/antipod-gui/src-tauri/icons/128x128.png" width="96" height="96" alt="AntiPod Logo" />
+
 # AntiPod
 
 **Нативный лаунчер и менеджер профилей на Rust + Tauri v2 для изолированного запуска нескольких аккаунтов Google Antigravity на Windows**
 
-🌐 **Язык / Language:** **Русский** | [English](README.en.md)
+🌐 **Язык / Language:** **Русский** | [English](README.md)
 
 [![Release](https://img.shields.io/github/v/release/pirotehnikng-cloud/antipod?color=2e8540&label=Release)](https://github.com/pirotehnikng-cloud/antipod/releases)
 [![Windows Build](https://img.shields.io/github/actions/workflow/status/pirotehnikng-cloud/antipod/release.yml?label=Windows%20Build)](https://github.com/pirotehnikng-cloud/antipod/actions)
