@@ -16,28 +16,39 @@
 ## Возможности
 
 - **Изоляция без сброса сессий:** отдельные `--user-data-dir`, виртуальный `USERPROFILE`/`HOME` и `SSH_CONNECTION` уводят OAuth-токены из общего Windows Credential Manager в локальную папку профиля.
+- **Портативный и классический режимы:** запуск без установки из любой папки или флешки — при наличии файла `portable.flag` (или `profiles.toml`) рядом с `.exe` все настройки и профили хранятся локально.
 - **Win32 Job Objects + мониторинг RAM:** чистое завершение всего дерева процессов (Electron + `language_server.exe`) и отображение потребления ОЗУ по каждому профилю в GUI и системном трее.
 - **Кнопка Chrome OAuth:** запуск привязанного профиля Google Chrome (`--profile-directory` или `incognito`) прямо из карточки профиля.
 - **Общие проекты и тулчейны:** NTFS Junctions для `Projects` и `.ssh` (права администратора не требуются) + проброс `.gitconfig`, `.cargo` и `.rustup`.
 - **Защита Git через worktree:** автоматическое создание `git worktree`, если два аккаунта открывают один репозиторий одновременно.
 - **Автозапуск с Windows:** тихий старт в системный трей (`--minimized`) с динамическим подменю профилей.
 
-## Установка
+## Установка и запуск
 
-1. Скачай установщик `AntiPod_1.0.0_x64-setup.exe` (или `.msi`) либо портативный `antipod-cli-v1.0.0-windows-x64.zip` со страницы [Releases](https://github.com/pirotehnikng-cloud/antipod/releases).
-2. При желании проверь целостность файла по `SHA256SUMS.txt`:
-   ```powershell
-   Get-FileHash .\AntiPod_1.0.0_x64-setup.exe -Algorithm SHA256
-   ```
+Скачай нужный вариант со страницы [Releases](https://github.com/pirotehnikng-cloud/antipod/releases):
+
+1. **Портативный GUI (с окном, без установки)** — `AntiPod-v1.0.2-windows-x64-portable.zip`
+   - Распакуй архив в обычную папку (например, `C:\Tools\AntiPod`) и запусти `AntiPod.exe` двойным кликом.
+   - Внутри архива уже лежит файл `portable.flag` — благодаря ему `profiles.toml`, `state.json` и папка `AntiPodProfiles` создаются прямо рядом с `AntiPod.exe`, не засоряя `%APPDATA%`.
+2. **Установщик GUI (Windows)** — `AntiPod_1.0.2_x64-setup.exe` (NSIS) или `.msi`
+   - Стандартная установка без прав администратора; конфиг хранится в `%APPDATA%\antipod\profiles.toml`.
+3. **Портативный CLI (консоль)** — `antipod-cli-v1.0.2-windows-x64.zip`
+   - Консольная утилита без графического окна. Запускай `antipod.exe` через PowerShell или Терминал (тоже поддерживает `portable.flag`).
+
+При желании проверь целостность скачанного файла по `SHA256SUMS.txt`:
+
+```powershell
+Get-FileHash .\AntiPod-v1.0.2-windows-x64-portable.zip -Algorithm SHA256
+```
 
 ## CLI-команды
 
 ```powershell
-antipod init                  # Создать стартовый %APPDATA%\antipod\profiles.toml
-antipod list                  # Список настроенных профилей
-antipod launch work           # Запустить профиль work
-antipod chrome work           # Открыть привязанный профиль Chrome для OAuth
-antipod stop work             # Завершить дерево процессов профиля work
+.\antipod.exe init            # Создать стартовый profiles.toml
+.\antipod.exe list            # Список настроенных профилей
+.\antipod.exe launch work     # Запустить профиль work
+.\antipod.exe chrome work     # Открыть привязанный профиль Chrome для OAuth
+.\antipod.exe stop work       # Завершить дерево процессов профиля work
 ```
 
 ## Дисклеймер
