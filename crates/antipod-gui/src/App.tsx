@@ -319,4 +319,363 @@ export default function App() {
     } catch (err) {
       setStatusMsg(`Ошибка сохранения: ${String(err)}`);
     } finally {
-      setBusy
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete(name: string) {
+    setBusy(true);
+    try {
+      await invoke("delete_profile", { name });
+      setStatusMsg(`Профиль "${name}" удалён`);
+      await refresh();
+    } catch (err) {
+      setStatusMsg(`Ошибка удаления: ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleToggleAutostart() {
+    try {
+      const next = !autostart;
+      await invoke("set_autostart", { enabled: next });
+      setAutostart(next);
+    } catch (err) {
+      setStatusMsg(`Ошибка автозапуска: ${String(err)}`);
+    }
+  }
+
+  async function handleToggleInterceptOauth() {
+    try {
+      const next = !interceptOauth;
+      await invoke("set_intercept_oauth", { enabled: next });
+      setInterceptOauth(next);
+      setStatusMsg(
+        next
+          ? "Перехват OAuth включён (применится при следующем запуске профиля)"
+          : "Перехват OAuth отключён (применится при следующем запуске профиля)"
+      );
+    } catch (err) {
+      setStatusMsg(`Ошибка настройки перехвата OAuth: ${String(err)}`);
+    }
+  }
+
+  async function handleOpenReleases() {
+    try {
+      await invoke("open_releases");
+    } catch (err) {
+      setStatusMsg(`Не удалось открыть страницу релизов: ${String(err)}`);
+    }
+  }
+
+  return (
+    <div className="container">
+      <header className="header">
+        <div>
+          <h1>AntiPod</h1>
+          <p className="subtitle">
+            Изолированные профили Google Antigravity · Активное ОЗУ:{" "}
+            <strong>{totalRamMb} MB</strong>
+          </p>
+        </div>
+        <div className="header-actions">
+          <label
+            className="toggle"
+            title="Перехватывать OAuth-ссылки из Antigravity IDE в буфер обмена и MostLogin"
+          >
+            <input
+              type="checkbox"
+              checked={interceptOauth}
+              onChange={handleToggleInterceptOauth}
+            />
+            <span>Перехват OAuth</span>
+          </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={autostart}
+              onChange={handleToggleAutostart}
+            />
+            <span>Автозапуск</span>
+          </label>
+          <button onClick={handleOpenReleases} disabled={busy}>
+            Релизы
+          </button>
+        </div>
+      </header>
+
+      {statusMsg && <div className="status">{statusMsg}</div>}
+
+      <section className="grid">
+        {profiles.map((p) => {
+          const isRunning = p.pid !== null;
+          const isTestingThis = testingKey === `card:${p.name}`;
+          return (
+            <div className="card" key={p.name}>
+              <div className="card-head">
+                <div className="card-title">
+                  <span
+                    className="color-dot"
+                    style={{ backgroundColor: p.titlebar_color }}
+                  />
+                  <strong>{p.name}</strong>
+                  <span className="badge">{p.mode.toUpperCase()}</span>
+                </div>
+                <span className={isRunning ? "pill running" : "pill stopped"}>
+                  {isRunning
+                    ? `${p.ram_mb ?? 0} MB · ${p.process_count ?? 1} proc`
+                    : "Остановлен"}
+                </span>
+              </div>
+
+              <div className="card-meta">
+                <div className="card-path" title={p.default_project}>
+                  {p.default_project}
+                </div>
+                <div
+                  className="card-sub"
+                  title={
+                    p.mostlogin_profile_id
+                      ? `MostLogin profileId: ${p.mostlogin_profile_id}`
+                      : p.browser_path ??
+                        "Автопоиск: Chrome → Edge → Brave → Firefox"
+                  }
+                >
+                  Браузер: {formatBrowserLabel(p, mlProfiles)}
+                  {isRunning ? ` · PID ${p.pid}` : ""}
+                </div>
+                {p.proxy_display && (
+                  <div
+                    className="card-sub"
+                    title="Локальный мост для Antigravity и Chromium-браузеров"
+                  >
+                    Прокси: {p.proxy_display}
+                  </div>
+                )}
+              </div>
+
+              <div className="card-actions">
+                {isRunning ? (
+                  <button
+                    className="btn-danger"
+                    onClick={() => handleStop(p.name)}
+                    disabled={busy}
+                  >
+                    Стоп
+                  </button>
+                ) : (
+                  <button
+                    className="btn-primary"
+                    onClick={() => handleLaunch(p.name)}
+                    disabled={busy}
+                  >
+                    Запуск
+                  </button>
+                )}
+                <button
+                  onClick={() => handleOpenBrowser(p)}
+                  disabled={busy}
+                  title={
+                    p.mostlogin_profile_id
+                      ? "Открыть привязанный профиль через MostLogin Local API"
+                      : "Открыть выбранный браузер (или Chrome/Edge по умолчанию)"
+                  }
+                >
+                  {p.mostlogin_profile_id ? "MostLogin" : "Браузер"}
+                </button>
+                {p.mostlogin_profile_id && (
+                  <button
+                    className="btn-ghost"
+                    onClick={() => handleCloseMostLogin(p.name)}
+                    disabled={busy}
+                    title="Закрыть окно этого профиля в MostLogin"
+                  >
+                    Закр. ML
+                  </button>
+                )}
+                {p.proxy && (
+                  <button
+                    onClick={() =>
+                      handleTestProxy(p.proxy!, `card:${p.name}`, p.name)
+                    }
+                    disabled={busy || testingKey !== null}
+                    title="Проверить подключение, внешний IP и страну прокси"
+                  >
+                    {isTestingThis ? "Проверка..." : "Тест прокси"}
+                  </button>
+                )}
+                <button
+                  className="btn-ghost"
+                  onClick={() => handleEditProfile(p)}
+                  disabled={busy}
+                  title="Редактировать профиль"
+                >
+                  Ред.
+                </button>
+                <button
+                  className="btn-ghost"
+                  onClick={() => handleDelete(p.name)}
+                  disabled={busy}
+                  title="Удалить профиль"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="add-form">
+        <h2>MostLogin Local API</h2>
+        <div className="form-row">
+          <input
+            type="text"
+            value={mlApiUrl}
+            onChange={(e) => setMlApiUrl(e.target.value)}
+            placeholder="http://127.0.0.1:30898"
+          />
+          <input
+            type="password"
+            value={mlApiToken}
+            onChange={(e) => setMlApiToken(e.target.value)}
+            placeholder="API-токен (например, Bearer xxx... или просто ключ)"
+          />
+          <button
+            type="button"
+            onClick={handleSaveMostLogin}
+            disabled={mlLoading}
+          >
+            Сохранить API
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleLoadMostLoginProfiles}
+            disabled={mlLoading}
+          >
+            {mlLoading ? "Загрузка..." : "Загрузить профили"}
+          </button>
+        </div>
+      </section>
+
+      <form className="add-form" onSubmit={handleAddProfile}>
+        <h2>Добавить или обновить профиль</h2>
+        <div className="form-row">
+          <input
+            type="text"
+            placeholder="Имя (например, client-1)"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            required
+          />
+          <select
+            value={newMode}
+            onChange={(e) => setNewMode(e.target.value as LaunchMode)}
+          >
+            <option value="ide">IDE</option>
+            <option value="app">Standalone App</option>
+          </select>
+          <input
+            type="text"
+            value={newChromeProfile}
+            onChange={(e) => setNewChromeProfile(e.target.value)}
+            placeholder="Профиль Chrome (опц.)"
+          />
+          <input
+            type="color"
+            value={newColor}
+            onChange={(e) => setNewColor(e.target.value)}
+            title="Цвет заголовка окна"
+          />
+        </div>
+        <div className="form-row">
+          <input
+            type="text"
+            value={newMostLoginId}
+            onChange={(e) => setNewMostLoginId(e.target.value)}
+            placeholder="MostLogin profileId (опц.) — запускает профиль через Local API"
+          />
+          {mlProfiles.length > 0 && (
+            <select
+              value={newMostLoginId}
+              onChange={(e) => setNewMostLoginId(e.target.value)}
+              title="Выбрать профиль из загруженного списка MostLogin"
+            >
+              <option value="">-- Выбрать из MostLogin --</option>
+              {mlProfiles.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.id.slice(0, 8)}...)
+                </option>
+              ))}
+            </select>
+          )}
+          {newMostLoginId && (
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setNewMostLoginId("")}
+              title="Отвязать профиль MostLogin"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <div className="form-row">
+          <input
+            type="text"
+            value={newBrowserPath}
+            onChange={(e) => setNewBrowserPath(e.target.value)}
+            placeholder="Браузер по умолчанию (опц.): путь к .exe, если не используется MostLogin API"
+          />
+          <button type="button" onClick={handlePickBrowser}>
+            Выбрать .exe
+          </button>
+          {newBrowserPath && (
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setNewBrowserPath("")}
+              title="Сбросить на автопоиск браузера"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <div className="form-row">
+          <input
+            type="text"
+            value={newProxy}
+            onChange={(e) => setNewProxy(e.target.value)}
+            placeholder="Прокси (опц.): http://user:pass@ip:port, socks5://user:pass@ip:port или ip:port:user:pass"
+          />
+          <button
+            type="button"
+            onClick={() =>
+              handleTestProxy(newProxy, "form", newName.trim() || "форма")
+            }
+            disabled={!newProxy.trim() || testingKey !== null}
+            title="Проверить прокси до сохранения профиля"
+          >
+            {testingKey === "form" ? "Проверка..." : "Тест прокси"}
+          </button>
+        </div>
+        <div className="form-row">
+          <input
+            type="text"
+            value={newProject}
+            onChange={(e) => setNewProject(e.target.value)}
+            placeholder="Путь к папке проекта"
+          />
+          <button type="button" onClick={handlePickFolder}>
+            Выбрать папку
+          </button>
+          <button type="submit" className="btn-primary" disabled={busy}>
+            Сохранить
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
