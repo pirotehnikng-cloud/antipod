@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/banner.svg" width="96" height="96" alt="AntiPod Logo" />
+<img src="assets/banner.svg" alt="AntiPod Banner" width="100%" />
 
 # AntiPod
 
