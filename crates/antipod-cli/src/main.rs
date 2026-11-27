@@ -7,8 +7,8 @@ use clap::{Parser, Subcommand};
 
 use antipod_core::{
     config_path, launch_detached_with_proxy, load_config, mask_proxy_str, measure_many,
-    open_chrome_profile_with_proxy, save_config, stop_detached_by_name, AppConfig, ProxyBridge,
-    ProxyConfig,
+    open_browser_for_profile, save_config, stop_detached_by_name, test_proxy, AppConfig,
+    ProxyBridge, ProxyConfig,
 };
 
 #[derive(Parser)]
@@ -37,12 +37,15 @@ enum Commands {
         #[arg(short, long)]
         project: Option<PathBuf>,
     },
-    /// Открыть привязанный профиль Google Chrome для OAuth
+    /// Открыть привязанный браузер (антидетект, Chrome, Edge, Firefox) для OAuth
+    #[command(visible_alias = "browser")]
     Chrome {
         name: String,
         #[arg(short, long)]
         url: Option<String>,
     },
+    /// Проверить прокси по имени профиля или по адресу (http://... / socks5://...)
+    TestProxy { target: String },
     /// Остановить дерево процессов запущенного профиля
     Stop { name: String },
 }
@@ -94,18 +97,25 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             println!(
-                "{:<14} {:<5} {:<9} {:<12} {:<28} {}",
-                "ПРОФИЛЬ", "РЕЖИМ", "ЦВЕТ", "CHROME", "ПРОКСИ", "ПРОЕКТ"
+                "{:<14} {:<5} {:<9} {:<16} {:<26} {}",
+                "ПРОФИЛЬ", "РЕЖИМ", "ЦВЕТ", "БРАУЗЕР", "ПРОКСИ", "ПРОЕКТ"
             );
             for p in cfg.profiles {
+                let browser_col = p
+                    .browser_path
+                    .as_deref()
+                    .and_then(|bp| bp.file_name())
+                    .and_then(|n| n.to_str())
+                    .or(p.chrome_profile.as_deref())
+                    .unwrap_or("auto");
                 let proxy_col =
                     mask_proxy_str(p.proxy.as_deref()).unwrap_or_else(|| "-".to_string());
                 println!(
-                    "{:<14} {:<5} {:<9} {:<12} {:<28} {}",
+                    "{:<14} {:<5} {:<9} {:<16} {:<26} {}",
                     p.name,
                     format!("{:?}", p.mode).to_lowercase(),
                     p.titlebar_color,
-                    p.chrome_profile.as_deref().unwrap_or("-"),
+                    browser_col,
                     proxy_col,
                     p.default_project.display()
                 );
@@ -149,24 +159,48 @@ fn main() -> Result<()> {
             let chrome_data = cfg.profiles_root.join(&profile.name).join("chrome-data");
             let isolated_dir = local_proxy.as_ref().map(|_| chrome_data.as_path());
 
-            let pid = open_chrome_profile_with_proxy(
+            let pid = open_browser_for_profile(
+                profile.browser_path.as_deref(),
                 profile.chrome_profile.as_deref(),
                 url.as_deref(),
                 local_proxy.as_deref(),
                 isolated_dir,
             )?;
             println!(
-                "[CHROME] Открыт профиль '{}' (Chrome: {}, PID: {pid})",
-                name,
-                profile.chrome_profile.as_deref().unwrap_or("Default")
+                "[BROWSER] Запущен браузер для профиля '{}' (PID: {pid})",
+                name
             );
 
             if let Some(_keep_alive) = bridge {
                 println!(
-                    "Прокси-мост активен. Закрой окно Chrome или нажми Ctrl+C для завершения."
+                    "Прокси-мост активен. Закрой окно браузера или нажми Ctrl+C для завершения."
                 );
                 wait_until_exit(pid);
             }
+        }
+        Commands::TestProxy { target } => {
+            let raw_proxy = load_config()
+                .ok()
+                .and_then(|cfg| {
+                    cfg.profiles
+                        .into_iter()
+                        .find(|p| p.name == target)
+                        .and_then(|p| p.proxy)
+                })
+                .unwrap_or(target);
+
+            let parsed = ProxyConfig::parse(&raw_proxy)?;
+            println!("[TEST] Проверяем {} ...", parsed.masked_display());
+            let res = test_proxy(&parsed)?;
+            let city_part = if res.city.is_empty() {
+                String::new()
+            } else {
+                format!(", {}", res.city)
+            };
+            println!(
+                "[OK] IP: {} | {} ({}){} | {} мс",
+                res.ip, res.country, res.country_code, city_part, res.latency_ms
+            );
         }
         Commands::Stop { name } => {
             stop_detached_by_name(&name)?;
