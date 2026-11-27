@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use directories::BaseDirs;
 use serde::{Deserialize, Serialize};
 
+use crate::mostlogin::DEFAULT_MOSTLOGIN_API_URL;
 use crate::CoreError;
 
 const PORTABLE_FLAG_FILE: &str = "portable.flag";
@@ -32,6 +33,8 @@ pub struct ProfileConfig {
     #[serde(default)]
     pub browser_path: Option<PathBuf>,
     #[serde(default)]
+    pub mostlogin_profile_id: Option<String>,
+    #[serde(default)]
     pub proxy: Option<String>,
 }
 
@@ -47,6 +50,10 @@ pub struct AppConfig {
     pub share_dev_toolchains: bool,
     #[serde(default = "default_true")]
     pub auto_git_worktree: bool,
+    #[serde(default = "default_mostlogin_api_url")]
+    pub mostlogin_api_url: String,
+    #[serde(default)]
+    pub mostlogin_api_token: Option<String>,
     #[serde(default)]
     pub profiles: Vec<ProfileConfig>,
 }
@@ -59,6 +66,8 @@ impl Default for AppConfig {
             isolate_extensions: false,
             share_dev_toolchains: true,
             auto_git_worktree: true,
+            mostlogin_api_url: default_mostlogin_api_url(),
+            mostlogin_api_token: None,
             profiles: vec![
                 ProfileConfig {
                     name: "personal".to_string(),
@@ -67,6 +76,7 @@ impl Default for AppConfig {
                     default_project: PathBuf::from(r"C:\Projects"),
                     chrome_profile: Some("Profile 1".to_string()),
                     browser_path: None,
+                    mostlogin_profile_id: None,
                     proxy: None,
                 },
                 ProfileConfig {
@@ -76,6 +86,7 @@ impl Default for AppConfig {
                     default_project: PathBuf::from(r"C:\Projects"),
                     chrome_profile: Some("Profile 2".to_string()),
                     browser_path: None,
+                    mostlogin_profile_id: None,
                     proxy: None,
                 },
             ],
@@ -85,6 +96,10 @@ impl Default for AppConfig {
 
 fn default_color() -> String {
     "#2b3a55".to_string()
+}
+
+fn default_mostlogin_api_url() -> String {
+    DEFAULT_MOSTLOGIN_API_URL.to_string()
 }
 
 fn default_profiles_root() -> PathBuf {
@@ -148,6 +163,24 @@ pub fn save_config(cfg: &AppConfig) -> Result<PathBuf, CoreError> {
         .map_err(|e| CoreError::Config(format!("Ошибка сериализации TOML: {e}")))?;
     fs::write(&path, serialized)?;
     Ok(path)
+}
+
+pub fn save_mostlogin_settings(
+    api_url: String,
+    api_token: Option<String>,
+) -> Result<AppConfig, CoreError> {
+    let mut cfg = load_config()?;
+    let trimmed_url = api_url.trim();
+    cfg.mostlogin_api_url = if trimmed_url.is_empty() {
+        default_mostlogin_api_url()
+    } else {
+        trimmed_url.to_string()
+    };
+    cfg.mostlogin_api_token = api_token
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    save_config(&cfg)?;
+    Ok(cfg)
 }
 
 pub fn upsert_profile(profile: ProfileConfig) -> Result<AppConfig, CoreError> {
