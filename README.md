@@ -7,7 +7,7 @@
 **Нативный лаунчер и менеджер профилей на Rust + Tauri v2 для изолированного запуска нескольких аккаунтов Google Antigravity на Windows**
 
 🌐 **Язык / Language:** **Русский** | [English](README.md)
-
+[![Downloads](https://img.shields.io/github/downloads/pirotehnikng-cloud/antipod/total?label=Downloads&color=0078d4&logo=windows)](../../releases/latest)
 [![Release](https://img.shields.io/github/v/release/pirotehnikng-cloud/antipod?color=2e8540&label=Release)](https://github.com/pirotehnikng-cloud/antipod/releases)
 [![Windows Build](https://img.shields.io/github/actions/workflow/status/pirotehnikng-cloud/antipod/release.yml?label=Windows%20Build)](https://github.com/pirotehnikng-cloud/antipod/actions)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11%20(x64)-0078D6?logo=windows)](https://github.com/pirotehnikng-cloud/antipod/releases)
