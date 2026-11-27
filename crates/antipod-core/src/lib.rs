@@ -5,21 +5,23 @@ pub mod isolation;
 pub mod job;
 pub mod launcher;
 pub mod metrics;
+pub mod proxy;
 pub mod theme;
 pub mod worktree;
 
 use thiserror::Error;
 
-pub use browser::{open_chrome_profile, resolve_chrome_exe};
+pub use browser::{open_chrome_profile, open_chrome_profile_with_proxy, resolve_chrome_exe};
 pub use config::{
     app_data_dir, config_path, load_config, remove_profile, save_config, upsert_profile, AppConfig,
     LaunchMode, ProfileConfig,
 };
 pub use launcher::{
-    launch_by_name, launch_detached, stop_detached_by_name, unregister_runtime_state,
-    RunningInstance,
+    launch_by_name, launch_by_name_with_proxy, launch_detached, launch_detached_with_proxy,
+    stop_detached_by_name, unregister_runtime_state, RunningInstance,
 };
 pub use metrics::{measure_many, ProcessMetrics};
+pub use proxy::{mask_proxy_str, ProxyBridge, ProxyConfig, ProxyScheme};
 
 #[derive(Debug, Error)]
 pub enum CoreError {
