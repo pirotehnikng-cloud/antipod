@@ -11,7 +11,10 @@ pub mod worktree;
 
 use thiserror::Error;
 
-pub use browser::{open_chrome_profile, open_chrome_profile_with_proxy, resolve_chrome_exe};
+pub use browser::{
+    open_browser_for_profile, open_chrome_profile, open_chrome_profile_with_proxy,
+    resolve_browser_exe, resolve_chrome_exe,
+};
 pub use config::{
     app_data_dir, config_path, load_config, remove_profile, save_config, upsert_profile, AppConfig,
     LaunchMode, ProfileConfig,
@@ -21,7 +24,7 @@ pub use launcher::{
     stop_detached_by_name, unregister_runtime_state, RunningInstance,
 };
 pub use metrics::{measure_many, ProcessMetrics};
-pub use proxy::{mask_proxy_str, ProxyBridge, ProxyConfig, ProxyScheme};
+pub use proxy::{mask_proxy_str, test_proxy, ProxyBridge, ProxyConfig, ProxyScheme, ProxyTestResult};
 
 #[derive(Debug, Error)]
 pub enum CoreError {
