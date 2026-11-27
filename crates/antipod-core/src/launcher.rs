@@ -35,7 +35,15 @@ impl RunningInstance {
 }
 
 pub fn launch_by_name(cfg: &AppConfig, name: &str) -> Result<RunningInstance, CoreError> {
-    launch_profile_internal(cfg, name, None, true)
+    launch_profile_internal(cfg, name, None, true, None)
+}
+
+pub fn launch_by_name_with_proxy(
+    cfg: &AppConfig,
+    name: &str,
+    proxy_url: Option<&str>,
+) -> Result<RunningInstance, CoreError> {
+    launch_profile_internal(cfg, name, None, true, proxy_url)
 }
 
 pub fn launch_detached(
@@ -43,7 +51,16 @@ pub fn launch_detached(
     name: &str,
     project_override: Option<PathBuf>,
 ) -> Result<RunningInstance, CoreError> {
-    launch_profile_internal(cfg, name, project_override, false)
+    launch_profile_internal(cfg, name, project_override, false, None)
+}
+
+pub fn launch_detached_with_proxy(
+    cfg: &AppConfig,
+    name: &str,
+    project_override: Option<PathBuf>,
+    proxy_url: Option<&str>,
+) -> Result<RunningInstance, CoreError> {
+    launch_profile_internal(cfg, name, project_override, false, proxy_url)
 }
 
 pub fn stop_detached_by_name(name: &str) -> Result<(), CoreError> {
@@ -69,6 +86,7 @@ fn launch_profile_internal(
     name: &str,
     project_override: Option<PathBuf>,
     managed_job: bool,
+    proxy_url: Option<&str>,
 ) -> Result<RunningInstance, CoreError> {
     let profile: &ProfileConfig = cfg
         .profiles
@@ -103,6 +121,20 @@ fn launch_profile_internal(
     if profile.mode == LaunchMode::Ide {
         cmd.arg(format!("--extensions-dir={}", paths.extensions.display()))
             .arg(&effective_project);
+    }
+
+    if let Some(proxy) = proxy_url.map(str::trim).filter(|s| !s.is_empty()) {
+        cmd.arg(format!("--proxy-server={proxy}"))
+            .arg("--proxy-bypass-list=localhost;127.0.0.1;[::1]")
+            .arg("--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1")
+            .env("HTTP_PROXY", proxy)
+            .env("HTTPS_PROXY", proxy)
+            .env("ALL_PROXY", proxy)
+            .env("http_proxy", proxy)
+            .env("https_proxy", proxy)
+            .env("all_proxy", proxy)
+            .env("NO_PROXY", "localhost,127.0.0.1,::1")
+            .env("no_proxy", "localhost,127.0.0.1,::1");
     }
 
     cmd.current_dir(&effective_project);
