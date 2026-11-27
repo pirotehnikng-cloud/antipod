@@ -1,11 +1,15 @@
 use std::collections::HashMap;
+use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use directories::BaseDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
+
+const PORTABLE_FLAG_FILE: &str = "portable.flag";
+const CONFIG_FILE: &str = "profiles.toml";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -76,21 +80,42 @@ fn default_color() -> String {
 }
 
 fn default_profiles_root() -> PathBuf {
-    PathBuf::from(r"C:\AntiPodProfiles")
+    if let Some(dir) = portable_dir() {
+        dir.join("AntiPodProfiles")
+    } else {
+        PathBuf::from(r"C:\AntiPodProfiles")
+    }
 }
 
 fn default_true() -> bool {
     true
 }
 
+fn is_portable_dir(dir: &Path) -> bool {
+    dir.join(PORTABLE_FLAG_FILE).exists() || dir.join(CONFIG_FILE).exists()
+}
+
+pub fn portable_dir() -> Option<PathBuf> {
+    let exe = env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    if is_portable_dir(dir) {
+        Some(dir.to_path_buf())
+    } else {
+        None
+    }
+}
+
 pub fn app_data_dir() -> Result<PathBuf, CoreError> {
+    if let Some(dir) = portable_dir() {
+        return Ok(dir);
+    }
     let dirs = BaseDirs::new()
         .ok_or_else(|| CoreError::Config("Не удалось определить каталог APPDATA".to_string()))?;
     Ok(dirs.config_dir().join("antipod"))
 }
 
 pub fn config_path() -> Result<PathBuf, CoreError> {
-    Ok(app_data_dir()?.join("profiles.toml"))
+    Ok(app_data_dir()?.join(CONFIG_FILE))
 }
 
 pub fn state_path() -> Result<PathBuf, CoreError> {
@@ -159,4 +184,27 @@ pub fn save_state(state: &RuntimeState) -> Result<(), CoreError> {
     let serialized = serde_json::to_string_pretty(state)?;
     fs::write(path, serialized)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_portable_flag_and_config() {
+        let base = env::temp_dir().join("antipod_portable_test");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).expect("create temp dir");
+        assert!(!is_portable_dir(&base));
+
+        let flag = base.join(PORTABLE_FLAG_FILE);
+        fs::write(&flag, "").expect("write flag");
+        assert!(is_portable_dir(&base));
+
+        fs::remove_file(&flag).expect("remove flag");
+        fs::write(base.join(CONFIG_FILE), "").expect("write config");
+        assert!(is_portable_dir(&base));
+
+        let _ = fs::remove_dir_all(&base);
+    }
 }
