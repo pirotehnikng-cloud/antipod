@@ -36,6 +36,7 @@ struct ProfileStatus {
     titlebar_color: String,
     default_project: String,
     chrome_profile: Option<String>,
+    browser_path: Option<String>,
     proxy: Option<String>,
     proxy_display: Option<String>,
 }
@@ -48,6 +49,7 @@ struct SaveProfileInput {
     titlebar_color: String,
     default_project: String,
     chrome_profile: Option<String>,
+    browser_path: Option<String>,
     proxy: Option<String>,
 }
 
@@ -276,6 +278,7 @@ fn list_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileStatus>, Strin
                 titlebar_color: p.titlebar_color,
                 default_project: p.default_project.to_string_lossy().to_string(),
                 chrome_profile: p.chrome_profile,
+                browser_path: p.browser_path.map(|bp| bp.to_string_lossy().to_string()),
                 proxy: p.proxy,
                 proxy_display,
             }
@@ -330,13 +333,27 @@ fn open_chrome_oauth(name: String, state: State<'_, AppState>) -> Result<u32, St
     let chrome_data = cfg.profiles_root.join(&profile.name).join("chrome-data");
     let isolated_dir = local_proxy.as_ref().map(|_| chrome_data.as_path());
 
-    antipod_core::open_chrome_profile_with_proxy(
+    antipod_core::open_browser_for_profile(
+        profile.browser_path.as_deref(),
         profile.chrome_profile.as_deref(),
         None,
         local_proxy.as_deref(),
         isolated_dir,
     )
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn test_proxy_connection(proxy: String) -> Result<antipod_core::ProxyTestResult, String> {
+    let trimmed = proxy.trim().to_string();
+    if trimmed.is_empty() {
+        return Err("Введи адрес прокси для проверки".to_string());
+    }
+    let parsed = antipod_core::ProxyConfig::parse(&trimmed).map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || antipod_core::test_proxy(&parsed))
+        .await
+        .map_err(|e| format!("Ошибка потока проверки прокси: {e}"))?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -358,12 +375,19 @@ fn save_profile(
         antipod_core::ProxyConfig::parse(raw).map_err(|e| e.to_string())?;
     }
 
+    let normalized_browser = input
+        .browser_path
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+
     antipod_core::upsert_profile(ProfileConfig {
         name: trimmed.to_string(),
         mode: input.mode,
         titlebar_color: input.titlebar_color,
         default_project: PathBuf::from(input.default_project),
         chrome_profile: input.chrome_profile,
+        browser_path: normalized_browser,
         proxy: normalized_proxy.clone(),
     })
     .map_err(|e| e.to_string())?;
@@ -507,6 +531,7 @@ pub fn run() {
             launch_profile,
             stop_profile,
             open_chrome_oauth,
+            test_proxy_connection,
             save_profile,
             delete_profile,
             get_autostart,
