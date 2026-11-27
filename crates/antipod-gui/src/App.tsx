@@ -13,6 +13,8 @@ interface ProfileStatus {
   titlebar_color: string;
   default_project: string;
   chrome_profile: string | null;
+  proxy: string | null;
+  proxy_display: string | null;
 }
 
 export default function App() {
@@ -26,6 +28,7 @@ export default function App() {
   const [newColor, setNewColor] = useState("#2b3a55");
   const [newProject, setNewProject] = useState("C:\\Projects");
   const [newChromeProfile, setNewChromeProfile] = useState("Profile 1");
+  const [newProxy, setNewProxy] = useState("");
 
   async function refresh() {
     try {
@@ -84,6 +87,16 @@ export default function App() {
     }
   }
 
+  function handleEditProfile(p: ProfileStatus) {
+    setNewName(p.name);
+    setNewMode(p.mode);
+    setNewColor(p.titlebar_color);
+    setNewProject(p.default_project);
+    setNewChromeProfile(p.chrome_profile ?? "");
+    setNewProxy(p.proxy ?? "");
+    setStatusMsg(`Редактирование профиля "${p.name}" — внеси изменения в форме ниже и нажми «Сохранить»`);
+  }
+
   async function handlePickFolder() {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
@@ -97,14 +110,18 @@ export default function App() {
     setBusy(true);
     try {
       await invoke("save_profile", {
-        name: newName.trim(),
-        mode: newMode,
-        titlebarColor: newColor,
-        defaultProject: newProject,
-        chromeProfile: newChromeProfile.trim() || null,
+        input: {
+          name: newName.trim(),
+          mode: newMode,
+          titlebarColor: newColor,
+          defaultProject: newProject,
+          chromeProfile: newChromeProfile.trim() || null,
+          proxy: newProxy.trim() || null,
+        },
       });
-      setNewName("");
       setStatusMsg(`Профиль "${newName.trim()}" сохранён`);
+      setNewName("");
+      setNewProxy("");
       await refresh();
     } catch (err) {
       setStatusMsg(`Ошибка сохранения: ${String(err)}`);
@@ -197,9 +214,14 @@ export default function App() {
                   {p.default_project}
                 </div>
                 <div className="card-sub">
-                  Chrome: {p.chrome_profile ?? "Default"}
+                  Chrome: {p.proxy_display ? "Изолированный (под прокси)" : p.chrome_profile ?? "Default"}
                   {isRunning ? ` · PID ${p.pid}` : ""}
                 </div>
+                {p.proxy_display && (
+                  <div className="card-sub" title="Локальный мост для Antigravity и Chrome OAuth">
+                    Прокси: {p.proxy_display}
+                  </div>
+                )}
               </div>
 
               <div className="card-actions">
@@ -223,14 +245,23 @@ export default function App() {
                 <button
                   onClick={() => handleOpenChrome(p.name)}
                   disabled={busy}
-                  title={`Открыть Chrome (${p.chrome_profile ?? "Default"}) для OAuth`}
+                  title="Открыть Chrome для OAuth-входа этого профиля"
                 >
                   Chrome OAuth
                 </button>
                 <button
                   className="btn-ghost"
+                  onClick={() => handleEditProfile(p)}
+                  disabled={busy}
+                  title="Редактировать профиль"
+                >
+                  Ред.
+                </button>
+                <button
+                  className="btn-ghost"
                   onClick={() => handleDelete(p.name)}
                   disabled={busy}
+                  title="Удалить профиль"
                 >
                   ×
                 </button>
@@ -268,6 +299,14 @@ export default function App() {
             value={newColor}
             onChange={(e) => setNewColor(e.target.value)}
             title="Цвет заголовка окна"
+          />
+        </div>
+        <div className="form-row">
+          <input
+            type="text"
+            value={newProxy}
+            onChange={(e) => setNewProxy(e.target.value)}
+            placeholder="Прокси (опц.): http://user:pass@ip:port, socks5://user:pass@ip:port или ip:port:user:pass"
           />
         </div>
         <div className="form-row">
