@@ -13,8 +13,28 @@ interface ProfileStatus {
   titlebar_color: string;
   default_project: string;
   chrome_profile: string | null;
+  browser_path: string | null;
   proxy: string | null;
   proxy_display: string | null;
+}
+
+interface ProxyTestResult {
+  ip: string;
+  country: string;
+  country_code: string;
+  city: string;
+  latency_ms: number;
+}
+
+function formatBrowserLabel(p: ProfileStatus): string {
+  if (p.browser_path) {
+    const exeName = p.browser_path.split(/[/\\]/).pop();
+    return exeName || p.browser_path;
+  }
+  if (p.proxy_display) {
+    return "Авто (изолированный под прокси)";
+  }
+  return p.chrome_profile ? `Авто (${p.chrome_profile})` : "Авто (Chrome/Edge)";
 }
 
 export default function App() {
@@ -22,12 +42,14 @@ export default function App() {
   const [autostart, setAutostart] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [testingKey, setTestingKey] = useState<string | null>(null);
 
   const [newName, setNewName] = useState("");
   const [newMode, setNewMode] = useState<LaunchMode>("ide");
   const [newColor, setNewColor] = useState("#2b3a55");
   const [newProject, setNewProject] = useState("C:\\Projects");
   const [newChromeProfile, setNewChromeProfile] = useState("Profile 1");
+  const [newBrowserPath, setNewBrowserPath] = useState("");
   const [newProxy, setNewProxy] = useState("");
 
   async function refresh() {
@@ -78,12 +100,35 @@ export default function App() {
     }
   }
 
-  async function handleOpenChrome(name: string) {
+  async function handleOpenBrowser(name: string) {
     try {
       await invoke<number>("open_chrome_oauth", { name });
-      setStatusMsg(`Открыт Chrome для OAuth профиля "${name}"`);
+      setStatusMsg(`Открыт браузер для профиля "${name}"`);
     } catch (err) {
-      setStatusMsg(`Ошибка запуска Chrome: ${String(err)}`);
+      setStatusMsg(`Ошибка запуска браузера: ${String(err)}`);
+    }
+  }
+
+  async function handleTestProxy(rawProxy: string, key: string, label: string) {
+    const trimmed = rawProxy.trim();
+    if (!trimmed) {
+      setStatusMsg("Сначала укажи адрес прокси для проверки");
+      return;
+    }
+    setTestingKey(key);
+    setStatusMsg(`Проверяем прокси (${label})...`);
+    try {
+      const res = await invoke<ProxyTestResult>("test_proxy_connection", {
+        proxy: trimmed,
+      });
+      const cityPart = res.city ? `, ${res.city}` : "";
+      setStatusMsg(
+        `Прокси (${label}) работает: ${res.ip} · ${res.country} (${res.country_code})${cityPart} · ${res.latency_ms} мс`
+      );
+    } catch (err) {
+      setStatusMsg(`Прокси (${label}) не прошёл проверку: ${String(err)}`);
+    } finally {
+      setTestingKey(null);
     }
   }
 
@@ -93,14 +138,28 @@ export default function App() {
     setNewColor(p.titlebar_color);
     setNewProject(p.default_project);
     setNewChromeProfile(p.chrome_profile ?? "");
+    setNewBrowserPath(p.browser_path ?? "");
     setNewProxy(p.proxy ?? "");
-    setStatusMsg(`Редактирование профиля "${p.name}" — внеси изменения в форме ниже и нажми «Сохранить»`);
+    setStatusMsg(
+      `Редактирование профиля "${p.name}" — внеси изменения в форме ниже и нажми «Сохранить»`
+    );
   }
 
   async function handlePickFolder() {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
       setNewProject(selected);
+    }
+  }
+
+  async function handlePickBrowser() {
+    const selected = await open({
+      directory: false,
+      multiple: false,
+      filters: [{ name: "Программы (.exe)", extensions: ["exe"] }],
+    });
+    if (typeof selected === "string") {
+      setNewBrowserPath(selected);
     }
   }
 
@@ -116,11 +175,13 @@ export default function App() {
           titlebarColor: newColor,
           defaultProject: newProject,
           chromeProfile: newChromeProfile.trim() || null,
+          browserPath: newBrowserPath.trim() || null,
           proxy: newProxy.trim() || null,
         },
       });
       setStatusMsg(`Профиль "${newName.trim()}" сохранён`);
       setNewName("");
+      setNewBrowserPath("");
       setNewProxy("");
       await refresh();
     } catch (err) {
@@ -191,6 +252,7 @@ export default function App() {
       <section className="grid">
         {profiles.map((p) => {
           const isRunning = p.pid !== null;
+          const isTestingThis = testingKey === `card:${p.name}`;
           return (
             <div className="card" key={p.name}>
               <div className="card-head">
@@ -213,12 +275,18 @@ export default function App() {
                 <div className="card-path" title={p.default_project}>
                   {p.default_project}
                 </div>
-                <div className="card-sub">
-                  Chrome: {p.proxy_display ? "Изолированный (под прокси)" : p.chrome_profile ?? "Default"}
+                <div
+                  className="card-sub"
+                  title={p.browser_path ?? "Автопоиск: Chrome → Edge → Brave → Firefox"}
+                >
+                  Браузер: {formatBrowserLabel(p)}
                   {isRunning ? ` · PID ${p.pid}` : ""}
                 </div>
                 {p.proxy_display && (
-                  <div className="card-sub" title="Локальный мост для Antigravity и Chrome OAuth">
+                  <div
+                    className="card-sub"
+                    title="Локальный мост для Antigravity и Chromium-браузеров"
+                  >
                     Прокси: {p.proxy_display}
                   </div>
                 )}
@@ -243,12 +311,23 @@ export default function App() {
                   </button>
                 )}
                 <button
-                  onClick={() => handleOpenChrome(p.name)}
+                  onClick={() => handleOpenBrowser(p.name)}
                   disabled={busy}
-                  title="Открыть Chrome для OAuth-входа этого профиля"
+                  title="Открыть выбранный браузер (или Chrome/Edge по умолчанию)"
                 >
-                  Chrome OAuth
+                  Браузер
                 </button>
+                {p.proxy && (
+                  <button
+                    onClick={() =>
+                      handleTestProxy(p.proxy!, `card:${p.name}`, p.name)
+                    }
+                    disabled={busy || testingKey !== null}
+                    title="Проверить подключение, внешний IP и страну прокси"
+                  >
+                    {isTestingThis ? "Проверка..." : "Тест прокси"}
+                  </button>
+                )}
                 <button
                   className="btn-ghost"
                   onClick={() => handleEditProfile(p)}
@@ -292,7 +371,7 @@ export default function App() {
             type="text"
             value={newChromeProfile}
             onChange={(e) => setNewChromeProfile(e.target.value)}
-            placeholder="Chrome (Profile 1 / incognito)"
+            placeholder="Профиль Chrome (опц.)"
           />
           <input
             type="color"
@@ -304,10 +383,41 @@ export default function App() {
         <div className="form-row">
           <input
             type="text"
+            value={newBrowserPath}
+            onChange={(e) => setNewBrowserPath(e.target.value)}
+            placeholder="Браузер по умолчанию (опц.): путь к .exe антидетекта, Edge, Chrome или Firefox"
+          />
+          <button type="button" onClick={handlePickBrowser}>
+            Выбрать .exe
+          </button>
+          {newBrowserPath && (
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setNewBrowserPath("")}
+              title="Сбросить на автопоиск браузера"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <div className="form-row">
+          <input
+            type="text"
             value={newProxy}
             onChange={(e) => setNewProxy(e.target.value)}
             placeholder="Прокси (опц.): http://user:pass@ip:port, socks5://user:pass@ip:port или ip:port:user:pass"
           />
+          <button
+            type="button"
+            onClick={() =>
+              handleTestProxy(newProxy, "form", newName.trim() || "форма")
+            }
+            disabled={!newProxy.trim() || testingKey !== null}
+            title="Проверить прокси до сохранения профиля"
+          >
+            {testingKey === "form" ? "Проверка..." : "Тест прокси"}
+          </button>
         </div>
         <div className="form-row">
           <input
