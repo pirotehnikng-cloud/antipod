@@ -29,6 +29,8 @@ pub struct ProfileConfig {
     pub default_project: PathBuf,
     #[serde(default)]
     pub chrome_profile: Option<String>,
+    #[serde(default)]
+    pub proxy: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +64,7 @@ impl Default for AppConfig {
                     titlebar_color: "#1f4e3d".to_string(),
                     default_project: PathBuf::from(r"C:\Projects"),
                     chrome_profile: Some("Profile 1".to_string()),
+                    proxy: None,
                 },
                 ProfileConfig {
                     name: "work".to_string(),
@@ -69,6 +72,7 @@ impl Default for AppConfig {
                     titlebar_color: "#2b3a55".to_string(),
                     default_project: PathBuf::from(r"C:\Projects"),
                     chrome_profile: Some("Profile 2".to_string()),
+                    proxy: None,
                 },
             ],
         }
