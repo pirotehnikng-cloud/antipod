@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, message } from "@tauri-apps/plugin-dialog";
 
 type LaunchMode = "ide" | "app";
 
@@ -369,6 +369,18 @@ export default function App() {
     }
   }
 
+  async function handleAbout() {
+    await message(
+      "AntiPod — Нативный лаунчер и менеджер изолированных профилей Google Antigravity.\n\n" +
+        "Версия: v1.3.3\n" +
+        "Платформа: Windows x64 (Tauri v2 + Rust)\n" +
+        "Лицензия: Apache-2.0 (Open Source)\n\n" +
+        "Исходный код и релизы:\n" +
+        "https://github.com/pirotehnikng-cloud/antipod",
+      { title: "О программе", kind: "info" }
+    );
+  }
+
   return (
     <div className="container">
       <header className="header">
@@ -401,6 +413,26 @@ export default function App() {
           </label>
           <button onClick={handleOpenReleases} disabled={busy}>
             Релизы
+          </button>
+          <button
+            className="btn-info"
+            onClick={handleAbout}
+            title="О программе"
+            style={{
+              borderRadius: "50%",
+              width: "32px",
+              height: "32px",
+              padding: "0",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "16px",
+              fontWeight: "bold",
+              lineHeight: "1",
+              minWidth: "auto",
+            }}
+          >
+            ⓘ
           </button>
         </div>
       </header>
