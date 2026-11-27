@@ -6,6 +6,7 @@ pub mod job;
 pub mod launcher;
 pub mod metrics;
 pub mod mostlogin;
+pub mod oauth;
 pub mod proxy;
 pub mod theme;
 pub mod worktree;
@@ -17,8 +18,9 @@ pub use browser::{
     resolve_browser_exe, resolve_chrome_exe,
 };
 pub use config::{
-    app_data_dir, config_path, load_config, remove_profile, save_config, save_mostlogin_settings,
-    upsert_profile, AppConfig, LaunchMode, ProfileConfig,
+    app_data_dir, config_path, load_config, remove_profile, save_config, save_intercept_oauth,
+    save_mostlogin_settings, set_mostlogin_cdp_port, upsert_profile, AppConfig, LaunchMode,
+    ProfileConfig,
 };
 pub use launcher::{
     launch_by_name, launch_by_name_with_proxy, launch_detached, launch_detached_with_proxy,
@@ -26,8 +28,12 @@ pub use launcher::{
 };
 pub use metrics::{measure_many, ProcessMetrics};
 pub use mostlogin::{
-    close_mostlogin_profile, list_mostlogin_profiles, open_mostlogin_profile, MostLoginLaunchInfo,
-    MostLoginProfileInfo, DEFAULT_MOSTLOGIN_API_URL,
+    close_mostlogin_profile, list_mostlogin_profiles, open_mostlogin_profile, open_url_via_cdp,
+    MostLoginLaunchInfo, MostLoginProfileInfo, DEFAULT_MOSTLOGIN_API_URL,
+};
+pub use oauth::{
+    apply_external_browser_setting, copy_to_clipboard, extract_url_from_args,
+    handle_intercepted_url, take_last_oauth_notice,
 };
 pub use proxy::{mask_proxy_str, test_proxy, ProxyBridge, ProxyConfig, ProxyScheme, ProxyTestResult};
 
@@ -63,6 +69,7 @@ mod tests {
         let parsed: AppConfig = toml::from_str(&toml_str).expect("deserialize");
         assert_eq!(parsed.profiles.len(), 2);
         assert_eq!(parsed.profiles[0].name, "personal");
+        assert!(parsed.intercept_oauth);
     }
 
     #[test]
