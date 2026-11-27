@@ -1,7 +1,7 @@
 <div align="center">
 
 <img src="assets/banner.svg" alt="AntiPod Banner" width="100%" />
-🌐 **Язык / Language:** **Русский** | [English](README.md)
+
 # AntiPod
 
 **Нативный лаунчер и менеджер профилей на Rust + Tauri v2 для изолированного запуска нескольких аккаунтов Google Antigravity на Windows**
@@ -12,7 +12,7 @@
 [![Windows Build](https://img.shields.io/github/actions/workflow/status/pirotehnikng-cloud/antipod/release.yml?label=Windows%20Build)](https://github.com/pirotehnikng-cloud/antipod/actions)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11%20(x64)-0078D6?logo=windows)](https://github.com/pirotehnikng-cloud/antipod/releases)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-
+🌐 **Язык / Language:** **Русский** | [English](README.md)
 [Скачать релиз для Windows](https://github.com/pirotehnikng-cloud/antipod/releases/latest) · [Возможности релиза](#-возможности-релиза-v131) · [Быстрый старт](#-быстрый-старт) · [CLI-утилита](#-консольная-утилита-antipod-cli)
 
 </div>
