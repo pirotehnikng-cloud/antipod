@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="crates/antipod-gui/src-tauri/icons/128x128.png" width="96" height="96" alt="AntiPod Logo" />
+<img src="assets/banner.svg" width="96" height="96" alt="AntiPod Logo" />
 
 # AntiPod
 
