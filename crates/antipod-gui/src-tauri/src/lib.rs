@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use antipod_core::{LaunchMode, ProfileConfig};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -15,9 +15,15 @@ const TRAY_ID: &str = "antipod-tray";
 const PROFILE_PREFIX: &str = "profile:";
 const RELEASES_URL: &str = "https://github.com/pirotehnikng-cloud/antipod/releases";
 
+struct ActiveBridge {
+    raw_proxy: String,
+    bridge: antipod_core::ProxyBridge,
+}
+
 #[derive(Default)]
 struct AppState {
     running: Mutex<HashMap<String, antipod_core::RunningInstance>>,
+    bridges: Mutex<HashMap<String, ActiveBridge>>,
 }
 
 #[derive(Serialize)]
@@ -30,6 +36,19 @@ struct ProfileStatus {
     titlebar_color: String,
     default_project: String,
     chrome_profile: Option<String>,
+    proxy: Option<String>,
+    proxy_display: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveProfileInput {
+    name: String,
+    mode: LaunchMode,
+    titlebar_color: String,
+    default_project: String,
+    chrome_profile: Option<String>,
+    proxy: Option<String>,
 }
 
 fn open_url_in_browser(url: &str) -> Result<(), String> {
@@ -46,6 +65,38 @@ fn open_url_in_browser(url: &str) -> Result<(), String> {
         let _ = url;
         Err("Открытие браузера поддерживается только на Windows".to_string())
     }
+}
+
+fn ensure_proxy_url(
+    state: &AppState,
+    profile_name: &str,
+    raw_proxy: Option<&str>,
+) -> Result<Option<String>, String> {
+    let mut bridges = state.bridges.lock().map_err(|e| e.to_string())?;
+    let Some(trimmed) = raw_proxy.map(str::trim).filter(|s| !s.is_empty()) else {
+        bridges.remove(profile_name);
+        return Ok(None);
+    };
+
+    if let Some(local_url) = bridges
+        .get(profile_name)
+        .filter(|b| b.raw_proxy == trimmed)
+        .map(|b| b.bridge.local_url())
+    {
+        return Ok(Some(local_url));
+    }
+
+    let parsed = antipod_core::ProxyConfig::parse(trimmed).map_err(|e| e.to_string())?;
+    let bridge = antipod_core::ProxyBridge::start(parsed).map_err(|e| e.to_string())?;
+    let local_url = bridge.local_url();
+    bridges.insert(
+        profile_name.to_string(),
+        ActiveBridge {
+            raw_proxy: trimmed.to_string(),
+            bridge,
+        },
+    );
+    Ok(Some(local_url))
 }
 
 fn collect_live_metrics(
@@ -166,8 +217,21 @@ fn toggle_profile_from_tray(app: &AppHandle, name: &str) {
                 let _ = inst.terminate();
             }
         }
+        if let Ok(mut bridges) = state.bridges.lock() {
+            bridges.remove(name);
+        }
     } else if let Ok(cfg) = antipod_core::load_config() {
-        if let Ok(inst) = antipod_core::launch_by_name(&cfg, name) {
+        let raw_proxy = cfg
+            .profiles
+            .iter()
+            .find(|p| p.name == name)
+            .and_then(|p| p.proxy.as_deref());
+        let Ok(local_proxy) = ensure_proxy_url(&state, name, raw_proxy) else {
+            return;
+        };
+        if let Ok(inst) =
+            antipod_core::launch_by_name_with_proxy(&cfg, name, local_proxy.as_deref())
+        {
             if let Ok(mut map) = state.running.lock() {
                 map.insert(name.to_string(), inst);
             }
@@ -184,6 +248,9 @@ fn stop_all_instances(app: &AppHandle) {
                 let _ = instance.terminate();
             }
         }
+        if let Ok(mut bridges) = state.bridges.lock() {
+            bridges.clear();
+        }
     }
     refresh_tray(app);
 }
@@ -199,6 +266,7 @@ fn list_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileStatus>, Strin
         .into_iter()
         .map(|p| {
             let stats = live.get(&p.name).copied();
+            let proxy_display = antipod_core::mask_proxy_str(p.proxy.as_deref());
             ProfileStatus {
                 name: p.name,
                 mode: p.mode,
@@ -208,6 +276,8 @@ fn list_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileStatus>, Strin
                 titlebar_color: p.titlebar_color,
                 default_project: p.default_project.to_string_lossy().to_string(),
                 chrome_profile: p.chrome_profile,
+                proxy: p.proxy,
+                proxy_display,
             }
         })
         .collect())
@@ -216,7 +286,14 @@ fn list_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileStatus>, Strin
 #[tauri::command]
 fn launch_profile(name: String, app: AppHandle, state: State<'_, AppState>) -> Result<u32, String> {
     let cfg = antipod_core::load_config().map_err(|e| e.to_string())?;
-    let instance = antipod_core::launch_by_name(&cfg, &name).map_err(|e| e.to_string())?;
+    let profile = cfg
+        .profiles
+        .iter()
+        .find(|p| p.name == name)
+        .ok_or_else(|| format!("Профиль '{name}' не найден"))?;
+    let local_proxy = ensure_proxy_url(&state, &profile.name, profile.proxy.as_deref())?;
+    let instance = antipod_core::launch_by_name_with_proxy(&cfg, &name, local_proxy.as_deref())
+        .map_err(|e| e.to_string())?;
     let pid = instance.pid();
 
     state
@@ -234,43 +311,72 @@ fn stop_profile(name: String, app: AppHandle, state: State<'_, AppState>) -> Res
     if let Some(instance) = state.running.lock().map_err(|e| e.to_string())?.remove(&name) {
         instance.terminate().map_err(|e| e.to_string())?;
     }
+    if let Ok(mut bridges) = state.bridges.lock() {
+        bridges.remove(&name);
+    }
     refresh_tray(&app);
     Ok(())
 }
 
 #[tauri::command]
-fn open_chrome_oauth(name: String) -> Result<u32, String> {
+fn open_chrome_oauth(name: String, state: State<'_, AppState>) -> Result<u32, String> {
     let cfg = antipod_core::load_config().map_err(|e| e.to_string())?;
     let profile = cfg
         .profiles
         .iter()
         .find(|p| p.name == name)
         .ok_or_else(|| format!("Профиль '{name}' не найден"))?;
-    antipod_core::open_chrome_profile(profile.chrome_profile.as_deref(), None)
-        .map_err(|e| e.to_string())
+    let local_proxy = ensure_proxy_url(&state, &profile.name, profile.proxy.as_deref())?;
+    let chrome_data = cfg.profiles_root.join(&profile.name).join("chrome-data");
+    let isolated_dir = local_proxy.as_ref().map(|_| chrome_data.as_path());
+
+    antipod_core::open_chrome_profile_with_proxy(
+        profile.chrome_profile.as_deref(),
+        None,
+        local_proxy.as_deref(),
+        isolated_dir,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn save_profile(
-    name: String,
-    mode: LaunchMode,
-    titlebar_color: String,
-    default_project: String,
-    chrome_profile: Option<String>,
+    input: SaveProfileInput,
     app: AppHandle,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let trimmed = name.trim();
+    let trimmed = input.name.trim();
     if trimmed.is_empty() {
         return Err("Имя профиля не может быть пустым".to_string());
     }
+
+    let normalized_proxy = input
+        .proxy
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if let Some(ref raw) = normalized_proxy {
+        antipod_core::ProxyConfig::parse(raw).map_err(|e| e.to_string())?;
+    }
+
     antipod_core::upsert_profile(ProfileConfig {
         name: trimmed.to_string(),
-        mode,
-        titlebar_color,
-        default_project: PathBuf::from(default_project),
-        chrome_profile,
+        mode: input.mode,
+        titlebar_color: input.titlebar_color,
+        default_project: PathBuf::from(input.default_project),
+        chrome_profile: input.chrome_profile,
+        proxy: normalized_proxy.clone(),
     })
     .map_err(|e| e.to_string())?;
+
+    if let Ok(mut bridges) = state.bridges.lock() {
+        let changed = bridges
+            .get(trimmed)
+            .is_some_and(|b| normalized_proxy.as_deref() != Some(b.raw_proxy.as_str()));
+        if changed {
+            bridges.remove(trimmed);
+        }
+    }
+
     refresh_tray(&app);
     Ok(())
 }
@@ -279,6 +385,9 @@ fn save_profile(
 fn delete_profile(name: String, app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     if let Some(inst) = state.running.lock().map_err(|e| e.to_string())?.remove(&name) {
         let _ = inst.terminate();
+    }
+    if let Ok(mut bridges) = state.bridges.lock() {
+        bridges.remove(&name);
     }
     antipod_core::remove_profile(&name).map_err(|e| e.to_string())?;
     refresh_tray(&app);
