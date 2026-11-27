@@ -5,6 +5,7 @@ use crate::config::{load_state, save_state, AppConfig, LaunchMode, ProfileConfig
 use crate::discovery::resolve_antigravity_exe;
 use crate::isolation::{apply_isolation_env, prepare_profile_dirs};
 use crate::job::{kill_process_tree, make_managed_job, JobObject};
+use crate::oauth::apply_external_browser_setting;
 use crate::theme::apply_titlebar_color;
 use crate::worktree::{git_repo_root, resolve_project_workspace};
 use crate::CoreError;
@@ -115,6 +116,13 @@ fn launch_profile_internal(
 
     apply_titlebar_color(&paths.user_data, &profile.titlebar_color)?;
 
+    let interceptor_exe = if cfg.intercept_oauth {
+        std::env::current_exe().ok()
+    } else {
+        None
+    };
+    apply_external_browser_setting(&paths.user_data, interceptor_exe.as_deref())?;
+
     let mut cmd = Command::new(&exe);
     cmd.arg(format!("--user-data-dir={}", paths.user_data.display()));
 
@@ -137,6 +145,7 @@ fn launch_profile_internal(
             .env("no_proxy", "localhost,127.0.0.1,::1");
     }
 
+    cmd.env("ANTIPOD_PROFILE", &profile.name);
     cmd.current_dir(&effective_project);
     apply_isolation_env(&mut cmd, &paths.home, cfg.share_dev_toolchains);
 
@@ -152,6 +161,7 @@ fn launch_profile_internal(
     };
 
     state.pids.insert(profile.name.clone(), pid);
+    state.last_launched_profile = Some(profile.name.clone());
     if let Some(root) = git_repo_root(&requested_project) {
         state.active_repos.insert(profile.name.clone(), root);
     }
